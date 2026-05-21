@@ -95,6 +95,7 @@ Current major sections:
 
 - Welcome reminder
 - TradingView checklist path with Strong Low or Strong High selection
+- Barrier confirmation after the strong line selection
 - Zero-volume, rough bar, and stretched-wick candle checks
 - Zerodha checklist path
 - Strict SL reminder before entry
@@ -108,6 +109,11 @@ The calculator mode is selected earlier in the checklist:
 
 - Strong Low leads to the BUY/LONG calculator.
 - Strong High leads to the SELL/SHORT calculator.
+
+After selecting Strong Low or Strong High, the app asks a barrier confirmation before the candle checks:
+
+- Strong Low checks for no near red barrier.
+- Strong High checks for no near blue barrier.
 
 For long/buy trades:
 

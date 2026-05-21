@@ -5,6 +5,7 @@ const STEPS = {
   OPEN_TRADINGVIEW: "OPEN_TRADINGVIEW",
   ONE_MIN_TIMEFRAME: "ONE_MIN_TIMEFRAME",
   CHOOSE_STRONG_LINE_TYPE: "CHOOSE_STRONG_LINE_TYPE",
+  CHECK_BARRIER: "CHECK_BARRIER",
   CHECK_ZERO_VOLUME_CANDLE: "CHECK_ZERO_VOLUME_CANDLE",
   CHECK_ROUGH_BAR_CANDLES: "CHECK_ROUGH_BAR_CANDLES",
   CHECK_STRETCHED_WICK_CANDLES: "CHECK_STRETCHED_WICK_CANDLES",
@@ -100,6 +101,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const [restartArmed, setRestartArmed] = useState(false);
   const [tradeDirection, setTradeDirection] = useState(null);
+  const [selectedLineType, setSelectedLineType] = useState(null);
   const [pendingCloseAction, setPendingCloseAction] = useState(null);
   const [sessionClosedKind, setSessionClosedKind] = useState("protected");
   const [nextSymbolMessage, setNextSymbolMessage] = useState(
@@ -108,8 +110,21 @@ function App() {
   const [calculatorValues, setCalculatorValues] = useState(initialCalculator);
 
   const screen = useMemo(
-    () => getScreen(step, tradeDirection, sessionClosedKind, nextSymbolMessage),
-    [step, tradeDirection, sessionClosedKind, nextSymbolMessage],
+    () =>
+      getScreen(
+        step,
+        tradeDirection,
+        selectedLineType,
+        sessionClosedKind,
+        nextSymbolMessage,
+      ),
+    [
+      step,
+      tradeDirection,
+      selectedLineType,
+      sessionClosedKind,
+      nextSymbolMessage,
+    ],
   );
   const prices = useMemo(
     () => calculateTradePrices(calculatorValues, tradeDirection),
@@ -154,6 +169,7 @@ function App() {
     setHistory([]);
     setRestartArmed(false);
     setTradeDirection(null);
+    setSelectedLineType(null);
     setPendingCloseAction(null);
     setSessionClosedKind("protected");
     setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
@@ -177,13 +193,15 @@ function App() {
     setPendingCloseAction(null);
     setSessionClosedKind("protected");
     setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
+    setSelectedLineType(null);
     setCalculatorValues(initialCalculator);
     goTo(STEPS.OPEN_TRADINGVIEW, { clearHistory: true });
   }
 
-  function chooseStrongLine(nextTradeDirection) {
+  function chooseStrongLine(nextTradeDirection, nextLineType) {
     setTradeDirection(nextTradeDirection);
-    goTo(STEPS.CHECK_ZERO_VOLUME_CANDLE);
+    setSelectedLineType(nextLineType);
+    goTo(STEPS.CHECK_BARRIER);
   }
 
   function showNextSymbol(message) {
@@ -193,6 +211,7 @@ function App() {
 
   function startNextSymbol() {
     setTradeDirection(null);
+    setSelectedLineType(null);
     setPendingCloseAction(null);
     setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
     setCalculatorValues(initialCalculator);
@@ -282,12 +301,12 @@ function App() {
               actions={[
                 {
                   label: "Strong Low",
-                  onClick: () => chooseStrongLine("long"),
+                  onClick: () => chooseStrongLine("long", "strongLow"),
                   variant: "success",
                 },
                 {
                   label: "Strong High",
-                  onClick: () => chooseStrongLine("short"),
+                  onClick: () => chooseStrongLine("short", "strongHigh"),
                   variant: "danger",
                 },
               ]}
@@ -319,14 +338,15 @@ function App() {
               title={screen.title}
               detail={screen.detail}
               tone={screen.tone}
+              titleSize={screen.titleSize}
               actions={[
                 {
-                  label: "Yes",
+                  label: screen.yesLabel || "Yes",
                   onClick: () => goTo(screen.yes),
                   variant: screen.yesVariant || "primary",
                 },
                 {
-                  label: "No",
+                  label: screen.noLabel || "No",
                   onClick: () => showNextSymbol(screen.noMessage),
                   variant: screen.noVariant || "secondary",
                 },
@@ -416,7 +436,17 @@ function App() {
   );
 }
 
-function getScreen(step, tradeDirection, sessionClosedKind, nextSymbolMessage) {
+function getScreen(
+  step,
+  tradeDirection,
+  selectedLineType,
+  sessionClosedKind,
+  nextSymbolMessage,
+) {
+  const isShortBarrier =
+    tradeDirection === "short" || selectedLineType === "strongHigh";
+  const barrierColor = isShortBarrier ? "blue" : "red";
+
   const screens = {
     [STEPS.WELCOME]: {
       type: "welcome",
@@ -439,28 +469,56 @@ function getScreen(step, tradeDirection, sessionClosedKind, nextSymbolMessage) {
     [STEPS.CHOOSE_STRONG_LINE_TYPE]: {
       type: "choice",
     },
+    [STEPS.CHECK_BARRIER]: {
+      type: "decision",
+      eyebrow: "TradingView check",
+      title: "Barrier Check",
+      detail: `No near ${barrierColor} barrier?`,
+      titleSize: "medium",
+      yes: STEPS.CHECK_ZERO_VOLUME_CANDLE,
+      yesLabel: `No near ${barrierColor} barrier`,
+      yesVariant: "success",
+      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
+      noLabel: `Yes, ${barrierColor} barrier is near`,
+      noVariant: "danger",
+    },
     [STEPS.CHECK_ZERO_VOLUME_CANDLE]: {
       type: "decision",
       eyebrow: "Candle check",
-      title: "There was no zero-volume candle today?",
+      title: "Zero-volume candle check",
+      detail: "Were there any zero-volume candles today?",
+      titleSize: "medium",
       yes: STEPS.CHECK_ROUGH_BAR_CANDLES,
+      yesLabel: "No zero-volume candles",
+      yesVariant: "success",
       noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
+      noLabel: "Yes, zero-volume candle found",
       noVariant: "danger",
     },
     [STEPS.CHECK_ROUGH_BAR_CANDLES]: {
       type: "decision",
       eyebrow: "Candle check",
-      title: "No rough bar like candles?",
+      title: "Rough bar candle check",
+      detail: "Were there any rough bar-like candles?",
+      titleSize: "medium",
       yes: STEPS.CHECK_STRETCHED_WICK_CANDLES,
+      yesLabel: "No rough bar candles",
+      yesVariant: "success",
       noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
+      noLabel: "Yes, rough bars found",
       noVariant: "danger",
     },
     [STEPS.CHECK_STRETCHED_WICK_CANDLES]: {
       type: "decision",
       eyebrow: "Candle check",
-      title: "No stretched-wick candles?",
+      title: "Stretched-wick candle check",
+      detail: "Were there any stretched-wick candles?",
+      titleSize: "medium",
       yes: STEPS.OPEN_ZERODHA,
+      yesLabel: "No stretched-wick candles",
+      yesVariant: "success",
       noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
+      noLabel: "Yes, stretched wicks found",
       noVariant: "danger",
     },
     [STEPS.OPEN_ZERODHA]: {
@@ -574,12 +632,19 @@ function getScreen(step, tradeDirection, sessionClosedKind, nextSymbolMessage) {
   return screens[step] || screens[STEPS.OPEN_TRADINGVIEW];
 }
 
-function StepScreen({ eyebrow, title, detail, tone = "default", actions }) {
+function StepScreen({
+  eyebrow,
+  title,
+  detail,
+  tone = "default",
+  titleSize = "default",
+  actions,
+}) {
   return (
     <div className={`step-card card-${tone}`}>
       <div className="step-copy">
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-        <h1 className="step-title" aria-live="polite">
+        <h1 className={`step-title title-${titleSize}`} aria-live="polite">
           {title.split("\n").map((line, index) =>
             line ? (
               <span key={`${line}-${index}`}>

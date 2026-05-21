@@ -181,6 +181,11 @@ button {
   text-wrap: balance;
 }
 
+.title-medium {
+  font-size: clamp(1.85rem, 8vw, 3.05rem);
+  line-height: 1.02;
+}
+
 .card-danger .step-title {
   color: #fff4f5;
 }
