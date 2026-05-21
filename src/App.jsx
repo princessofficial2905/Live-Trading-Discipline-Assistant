@@ -4,31 +4,23 @@ const STEPS = {
   WELCOME: "WELCOME",
   OPEN_TRADINGVIEW: "OPEN_TRADINGVIEW",
   ONE_MIN_TIMEFRAME: "ONE_MIN_TIMEFRAME",
-  ASK_STRONG_LOW_VISIBLE: "ASK_STRONG_LOW_VISIBLE",
-  OPEN_ZERODHA_FROM_TV: "OPEN_ZERODHA_FROM_TV",
+  CHOOSE_STRONG_LINE_TYPE: "CHOOSE_STRONG_LINE_TYPE",
+  CHECK_ZERO_VOLUME_CANDLE: "CHECK_ZERO_VOLUME_CANDLE",
+  CHECK_ROUGH_BAR_CANDLES: "CHECK_ROUGH_BAR_CANDLES",
+  CHECK_STRETCHED_WICK_CANDLES: "CHECK_STRETCHED_WICK_CANDLES",
+  OPEN_ZERODHA: "OPEN_ZERODHA",
   SEARCH_SYMBOL: "SEARCH_SYMBOL",
   ASK_BLESSINGS_RECEIVED: "ASK_BLESSINGS_RECEIVED",
-  ASK_BLUE_BLACK_MOVEMENT_TV_PATH: "ASK_BLUE_BLACK_MOVEMENT_TV_PATH",
-  DO_NOT_ENTER_NEXT_TV: "DO_NOT_ENTER_NEXT_TV",
-  VIEW_NEXT_SYMBOL_TV: "VIEW_NEXT_SYMBOL_TV",
-  OPEN_ZERODHA_DIRECT: "OPEN_ZERODHA_DIRECT",
-  SCROLL_LINGER: "SCROLL_LINGER",
-  ASK_ANY_SYMBOL_BLESSINGS: "ASK_ANY_SYMBOL_BLESSINGS",
-  ASK_BLUE_BLACK_MOVEMENT_ZERODHA_PATH: "ASK_BLUE_BLACK_MOVEMENT_ZERODHA_PATH",
-  OPEN_TRADINGVIEW_AFTER_ZERODHA: "OPEN_TRADINGVIEW_AFTER_ZERODHA",
-  ASK_VISIBLE_STRONG_LOW_AFTER_ZERODHA:
-    "ASK_VISIBLE_STRONG_LOW_AFTER_ZERODHA",
-  ZERODHA_NEXT_SYMBOL: "ZERODHA_NEXT_SYMBOL",
-  ASK_ZERODHA_LINGERING_ENDED: "ASK_ZERODHA_LINGERING_ENDED",
-  START_AGAIN_FROM_WATCHLIST: "START_AGAIN_FROM_WATCHLIST",
+  ASK_BLUE_BLACK_MOVEMENT: "ASK_BLUE_BLACK_MOVEMENT",
   REMIND_SL: "REMIND_SL",
   ENTER_TRADE: "ENTER_TRADE",
   CALCULATOR: "CALCULATOR",
+  REMOVE_ACTIVE_ORDER_REMINDER: "REMOVE_ACTIVE_ORDER_REMINDER",
   TARGET_HIT: "TARGET_HIT",
-  SESSION_ENDED_NO_DONATION: "SESSION_ENDED_NO_DONATION",
   SL_HIT_WARNING: "SL_HIT_WARNING",
   DIARY_REMINDER: "DIARY_REMINDER",
-  SESSION_CLOSED_PROTECTED: "SESSION_CLOSED_PROTECTED",
+  SESSION_CLOSED: "SESSION_CLOSED",
+  DO_NOT_ENTER_NEXT_SYMBOL: "DO_NOT_ENTER_NEXT_SYMBOL",
 };
 
 const initialCalculator = {
@@ -39,16 +31,28 @@ const initialCalculator = {
   maxRiskAmount: "50",
 };
 
-const tradeMode = "long";
+const NEXT_SYMBOL_MESSAGES = {
+  doNotEnter: "Do not enter. View next symbol in TradingView.",
+  viewNext: "View next symbol in TradingView.",
+};
 
-function calculateTradePrices(values, mode = tradeMode) {
-  const entryPrice = Number(values.entryPrice);
-  const quantity = Number(values.quantity);
-  const target1Amount = Number(values.target1Amount);
-  const target2Amount = Number(values.target2Amount);
-  const maxRiskAmount = Number(values.maxRiskAmount);
+function parseCalculatorNumber(value) {
+  if (String(value).trim() === "") {
+    return Number.NaN;
+  }
+
+  return Number(value);
+}
+
+function calculateTradePrices(values, tradeDirection) {
+  const entryPrice = parseCalculatorNumber(values.entryPrice);
+  const quantity = parseCalculatorNumber(values.quantity);
+  const target1Amount = parseCalculatorNumber(values.target1Amount);
+  const target2Amount = parseCalculatorNumber(values.target2Amount);
+  const maxRiskAmount = parseCalculatorNumber(values.maxRiskAmount);
 
   if (
+    !tradeDirection ||
     !Number.isFinite(entryPrice) ||
     !Number.isFinite(quantity) ||
     !Number.isFinite(target1Amount) ||
@@ -59,7 +63,7 @@ function calculateTradePrices(values, mode = tradeMode) {
     return null;
   }
 
-  const direction = mode === "short" ? -1 : 1;
+  const direction = tradeDirection === "short" ? -1 : 1;
 
   return {
     target1Price: entryPrice + direction * (target1Amount / quantity),
@@ -74,7 +78,12 @@ function formatPrice(value) {
   }
 
   const absoluteValue = Math.abs(value);
-  const decimals = absoluteValue > 0 && absoluteValue < 0.01 ? 6 : absoluteValue < 1 ? 4 : 2;
+  const decimals =
+    absoluteValue > 0 && absoluteValue < 0.01
+      ? 6
+      : absoluteValue > 0 && absoluteValue < 1
+        ? 4
+        : 2;
 
   return value.toLocaleString("en-IN", {
     minimumFractionDigits: decimals,
@@ -82,34 +91,42 @@ function formatPrice(value) {
   });
 }
 
+function getTradeModeLabel(tradeDirection) {
+  return tradeDirection === "short" ? "SELL / SHORT" : "BUY / LONG";
+}
+
 function App() {
   const [step, setStep] = useState(STEPS.WELCOME);
   const [history, setHistory] = useState([]);
   const [restartArmed, setRestartArmed] = useState(false);
+  const [tradeDirection, setTradeDirection] = useState(null);
+  const [pendingCloseAction, setPendingCloseAction] = useState(null);
+  const [sessionClosedKind, setSessionClosedKind] = useState("protected");
+  const [nextSymbolMessage, setNextSymbolMessage] = useState(
+    NEXT_SYMBOL_MESSAGES.doNotEnter,
+  );
   const [calculatorValues, setCalculatorValues] = useState(initialCalculator);
 
-  const screen = useMemo(() => getScreen(step), [step]);
+  const screen = useMemo(
+    () => getScreen(step, tradeDirection, sessionClosedKind, nextSymbolMessage),
+    [step, tradeDirection, sessionClosedKind, nextSymbolMessage],
+  );
   const prices = useMemo(
-    () => calculateTradePrices(calculatorValues),
-    [calculatorValues],
+    () => calculateTradePrices(calculatorValues, tradeDirection),
+    [calculatorValues, tradeDirection],
   );
 
-  const canGoBack =
-    history.length > 0 &&
-    ![
-      STEPS.WELCOME,
-      STEPS.SL_HIT_WARNING,
-      STEPS.DIARY_REMINDER,
-      STEPS.SESSION_CLOSED_PROTECTED,
-    ].includes(step);
+  const isLockedShutdown =
+    [STEPS.SL_HIT_WARNING, STEPS.DIARY_REMINDER, STEPS.SESSION_CLOSED].includes(
+      step,
+    ) ||
+    (step === STEPS.REMOVE_ACTIVE_ORDER_REMINDER &&
+      pendingCloseAction === "sl");
 
-  const canReset =
-    ![
-      STEPS.WELCOME,
-      STEPS.SL_HIT_WARNING,
-      STEPS.DIARY_REMINDER,
-      STEPS.SESSION_CLOSED_PROTECTED,
-    ].includes(step);
+  const canGoBack =
+    history.length > 0 && ![STEPS.WELCOME].includes(step) && !isLockedShutdown;
+
+  const canReset = ![STEPS.WELCOME].includes(step) && !isLockedShutdown;
 
   function goTo(nextStep, options = {}) {
     setRestartArmed(false);
@@ -136,6 +153,10 @@ function App() {
     setStep(STEPS.WELCOME);
     setHistory([]);
     setRestartArmed(false);
+    setTradeDirection(null);
+    setPendingCloseAction(null);
+    setSessionClosedKind("protected");
+    setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
     setCalculatorValues(initialCalculator);
   }
 
@@ -152,6 +173,28 @@ function App() {
   }
 
   function startChecklist() {
+    setTradeDirection(null);
+    setPendingCloseAction(null);
+    setSessionClosedKind("protected");
+    setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
+    setCalculatorValues(initialCalculator);
+    goTo(STEPS.OPEN_TRADINGVIEW, { clearHistory: true });
+  }
+
+  function chooseStrongLine(nextTradeDirection) {
+    setTradeDirection(nextTradeDirection);
+    goTo(STEPS.CHECK_ZERO_VOLUME_CANDLE);
+  }
+
+  function showNextSymbol(message) {
+    setNextSymbolMessage(message);
+    goTo(STEPS.DO_NOT_ENTER_NEXT_SYMBOL);
+  }
+
+  function startNextSymbol() {
+    setTradeDirection(null);
+    setPendingCloseAction(null);
+    setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
     setCalculatorValues(initialCalculator);
     goTo(STEPS.OPEN_TRADINGVIEW, { clearHistory: true });
   }
@@ -161,6 +204,31 @@ function App() {
       ...currentValues,
       [field]: value,
     }));
+  }
+
+  function handleTargetHit() {
+    setPendingCloseAction("target");
+    goTo(STEPS.REMOVE_ACTIVE_ORDER_REMINDER);
+  }
+
+  function handleSlHit() {
+    setPendingCloseAction("sl");
+    goTo(STEPS.REMOVE_ACTIVE_ORDER_REMINDER);
+  }
+
+  function completeActiveOrderReminder() {
+    if (pendingCloseAction === "sl") {
+      goTo(STEPS.SL_HIT_WARNING, { clearHistory: true });
+      return;
+    }
+
+    goTo(STEPS.TARGET_HIT);
+  }
+
+  function closeSession(kind) {
+    setSessionClosedKind(kind);
+    setPendingCloseAction(null);
+    goTo(STEPS.SESSION_CLOSED, { clearHistory: true });
   }
 
   return (
@@ -179,7 +247,9 @@ function App() {
 
           {canReset ? (
             <button
-              className={`top-control reset-control ${restartArmed ? "armed" : ""}`}
+              className={`top-control reset-control ${
+                restartArmed ? "armed" : ""
+              }`}
               type="button"
               onClick={requestRestart}
             >
@@ -193,7 +263,6 @@ function App() {
         <section className="screen-shell" key={step}>
           {step === STEPS.WELCOME && (
             <StepScreen
-              eyebrow="Session start"
               title="Reminder: Fuck The Idea of Brokerage Donation."
               tone="danger"
               actions={[
@@ -201,6 +270,25 @@ function App() {
                   label: "Start Session",
                   onClick: startChecklist,
                   variant: "primary",
+                },
+              ]}
+            />
+          )}
+
+          {step === STEPS.CHOOSE_STRONG_LINE_TYPE && (
+            <StepScreen
+              eyebrow="TradingView check"
+              title="Any today's line visible near entry?"
+              actions={[
+                {
+                  label: "Strong Low",
+                  onClick: () => chooseStrongLine("long"),
+                  variant: "success",
+                },
+                {
+                  label: "Strong High",
+                  onClick: () => chooseStrongLine("short"),
+                  variant: "danger",
                 },
               ]}
             />
@@ -239,8 +327,38 @@ function App() {
                 },
                 {
                   label: "No",
-                  onClick: () => goTo(screen.no),
+                  onClick: () => showNextSymbol(screen.noMessage),
                   variant: screen.noVariant || "secondary",
+                },
+              ]}
+            />
+          )}
+
+          {screen.type === "next-symbol" && (
+            <StepScreen
+              eyebrow={screen.eyebrow}
+              title={screen.title}
+              tone={screen.tone}
+              actions={[
+                {
+                  label: "Next Symbol",
+                  onClick: startNextSymbol,
+                  variant: screen.buttonVariant || "primary",
+                },
+              ]}
+            />
+          )}
+
+          {screen.type === "remove-order-reminder" && (
+            <StepScreen
+              eyebrow="Order check"
+              title="Remove, if any active Order/ ATO"
+              tone="danger"
+              actions={[
+                {
+                  label: "Done",
+                  onClick: completeActiveOrderReminder,
+                  variant: "danger",
                 },
               ]}
             />
@@ -255,13 +373,27 @@ function App() {
               actions={[
                 {
                   label: "Yes, restart",
-                  onClick: () =>
-                    goTo(STEPS.OPEN_TRADINGVIEW, { clearHistory: true }),
+                  onClick: startNextSymbol,
                   variant: "success",
                 },
                 {
                   label: "No, end session",
-                  onClick: () => goTo(STEPS.SESSION_ENDED_NO_DONATION),
+                  onClick: () => closeSession("noDonation"),
+                  variant: "secondary",
+                },
+              ]}
+            />
+          )}
+
+          {screen.type === "session-closed" && (
+            <StepScreen
+              eyebrow="Session closed"
+              title={screen.title}
+              tone="success"
+              actions={[
+                {
+                  label: "Start New Session",
+                  onClick: resetSession,
                   variant: "secondary",
                 },
               ]}
@@ -270,11 +402,12 @@ function App() {
 
           {screen.type === "calculator" && (
             <CalculatorScreen
+              tradeDirection={tradeDirection}
               values={calculatorValues}
               prices={prices}
               onChange={updateCalculatorValue}
-              onTargetHit={() => goTo(STEPS.TARGET_HIT)}
-              onSlHit={() => goTo(STEPS.SL_HIT_WARNING)}
+              onTargetHit={handleTargetHit}
+              onSlHit={handleSlHit}
             />
           )}
         </section>
@@ -283,7 +416,7 @@ function App() {
   );
 }
 
-function getScreen(step) {
+function getScreen(step, tradeDirection, sessionClosedKind, nextSymbolMessage) {
   const screens = {
     [STEPS.WELCOME]: {
       type: "welcome",
@@ -301,18 +434,36 @@ function getScreen(step) {
       eyebrow: "Timeframe",
       title: "1 minute timeframe",
       buttonLabel: "Done",
-      next: STEPS.ASK_STRONG_LOW_VISIBLE,
+      next: STEPS.CHOOSE_STRONG_LINE_TYPE,
     },
-    [STEPS.ASK_STRONG_LOW_VISIBLE]: {
+    [STEPS.CHOOSE_STRONG_LINE_TYPE]: {
+      type: "choice",
+    },
+    [STEPS.CHECK_ZERO_VOLUME_CANDLE]: {
       type: "decision",
-      eyebrow: "TradingView check",
-      title: "Any today's strong low visible near entry?",
-      detail:
-        "Today a new strong line is made and is clearly visible and too near from our entry point.",
-      yes: STEPS.OPEN_ZERODHA_FROM_TV,
-      no: STEPS.OPEN_ZERODHA_DIRECT,
+      eyebrow: "Candle check",
+      title: "There was no zero-volume candle today?",
+      yes: STEPS.CHECK_ROUGH_BAR_CANDLES,
+      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
+      noVariant: "danger",
     },
-    [STEPS.OPEN_ZERODHA_FROM_TV]: {
+    [STEPS.CHECK_ROUGH_BAR_CANDLES]: {
+      type: "decision",
+      eyebrow: "Candle check",
+      title: "No rough bar like candles?",
+      yes: STEPS.CHECK_STRETCHED_WICK_CANDLES,
+      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
+      noVariant: "danger",
+    },
+    [STEPS.CHECK_STRETCHED_WICK_CANDLES]: {
+      type: "decision",
+      eyebrow: "Candle check",
+      title: "No stretched-wick candles?",
+      yes: STEPS.OPEN_ZERODHA,
+      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
+      noVariant: "danger",
+    },
+    [STEPS.OPEN_ZERODHA]: {
       type: "action",
       eyebrow: "Zerodha",
       title: "Open Zerodha",
@@ -329,106 +480,25 @@ function getScreen(step) {
     [STEPS.ASK_BLESSINGS_RECEIVED]: {
       type: "decision",
       eyebrow: "Zerodha",
-      title: "Blessing tooked?",
-      detail: "Blessings received?",
-      yes: STEPS.ASK_BLUE_BLACK_MOVEMENT_TV_PATH,
-      no: STEPS.VIEW_NEXT_SYMBOL_TV,
+      title: "Blessings received?",
+      yes: STEPS.ASK_BLUE_BLACK_MOVEMENT,
+      noMessage: NEXT_SYMBOL_MESSAGES.viewNext,
     },
-    [STEPS.ASK_BLUE_BLACK_MOVEMENT_TV_PATH]: {
+    [STEPS.ASK_BLUE_BLACK_MOVEMENT]: {
       type: "decision",
       eyebrow: "Zerodha",
       title: "Proper Blue/Black movement done?",
       yes: STEPS.REMIND_SL,
-      no: STEPS.DO_NOT_ENTER_NEXT_TV,
+      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
       noVariant: "danger",
-    },
-    [STEPS.DO_NOT_ENTER_NEXT_TV]: {
-      type: "action",
-      eyebrow: "Stop",
-      title: "Do not enter. View next symbol in TradingView.",
-      tone: "danger",
-      buttonLabel: "Next Symbol",
-      buttonVariant: "danger",
-      next: STEPS.OPEN_TRADINGVIEW,
-    },
-    [STEPS.VIEW_NEXT_SYMBOL_TV]: {
-      type: "action",
-      eyebrow: "Next setup",
-      title: "View next symbol in TradingView.",
-      buttonLabel: "Next Symbol",
-      next: STEPS.OPEN_TRADINGVIEW,
-    },
-    [STEPS.OPEN_ZERODHA_DIRECT]: {
-      type: "action",
-      eyebrow: "Zerodha",
-      title: "Open Zerodha",
-      buttonLabel: "Done",
-      next: STEPS.SCROLL_LINGER,
-    },
-    [STEPS.SCROLL_LINGER]: {
-      type: "action",
-      eyebrow: "Zerodha",
-      title: "Scroll and linger on",
-      buttonLabel: "Done",
-      next: STEPS.ASK_ANY_SYMBOL_BLESSINGS,
-    },
-    [STEPS.ASK_ANY_SYMBOL_BLESSINGS]: {
-      type: "decision",
-      eyebrow: "Zerodha",
-      title: "Any symbol received blessings?",
-      yes: STEPS.ASK_BLUE_BLACK_MOVEMENT_ZERODHA_PATH,
-      no: STEPS.ASK_ZERODHA_LINGERING_ENDED,
-    },
-    [STEPS.ASK_BLUE_BLACK_MOVEMENT_ZERODHA_PATH]: {
-      type: "decision",
-      eyebrow: "Zerodha",
-      title: "Proper Blue/Black movement done?",
-      yes: STEPS.OPEN_TRADINGVIEW_AFTER_ZERODHA,
-      no: STEPS.ZERODHA_NEXT_SYMBOL,
-      noVariant: "danger",
-    },
-    [STEPS.OPEN_TRADINGVIEW_AFTER_ZERODHA]: {
-      type: "action",
-      eyebrow: "TradingView",
-      title: "Open TradingView",
-      buttonLabel: "Done",
-      next: STEPS.ASK_VISIBLE_STRONG_LOW_AFTER_ZERODHA,
-    },
-    [STEPS.ASK_VISIBLE_STRONG_LOW_AFTER_ZERODHA]: {
-      type: "decision",
-      eyebrow: "TradingView check",
-      title: "Visible strong low nearest line?",
-      detail:
-        "Today a new strong line is made and is clearly visible and too near from our entry point.",
-      yes: STEPS.REMIND_SL,
-      no: STEPS.ZERODHA_NEXT_SYMBOL,
-      noVariant: "danger",
-    },
-    [STEPS.ZERODHA_NEXT_SYMBOL]: {
-      type: "action",
-      eyebrow: "Zerodha",
-      title: "Back to next symbol in Zerodha.",
-      buttonLabel: "Next Zerodha Symbol",
-      next: STEPS.SCROLL_LINGER,
-    },
-    [STEPS.ASK_ZERODHA_LINGERING_ENDED]: {
-      type: "decision",
-      eyebrow: "Zerodha",
-      title: "Zerodha lingering ended?",
-      yes: STEPS.START_AGAIN_FROM_WATCHLIST,
-      no: STEPS.SCROLL_LINGER,
-    },
-    [STEPS.START_AGAIN_FROM_WATCHLIST]: {
-      type: "action",
-      eyebrow: "Watchlist",
-      title: "Start again from TradingView watchlist.",
-      buttonLabel: "Restart Watchlist",
-      next: STEPS.OPEN_TRADINGVIEW,
     },
     [STEPS.REMIND_SL]: {
       type: "action",
       eyebrow: "Risk lock",
-      title: "Before entering: Put SL below that strong low line.",
+      title:
+        tradeDirection === "short"
+          ? "Before entering: Put SL above that strong high line."
+          : "Before entering: Put SL below that strong low line.",
       tone: "danger",
       buttonLabel: "I placed SL mentally / noted it",
       buttonVariant: "danger",
@@ -445,19 +515,13 @@ function getScreen(step) {
       type: "calculator",
       tone: "default",
     },
+    [STEPS.REMOVE_ACTIVE_ORDER_REMINDER]: {
+      type: "remove-order-reminder",
+      tone: "danger",
+    },
     [STEPS.TARGET_HIT]: {
       type: "target-hit",
       tone: "success",
-    },
-    [STEPS.SESSION_ENDED_NO_DONATION]: {
-      type: "action",
-      eyebrow: "Session closed",
-      title: "Session ended. No extra donation to the market.",
-      tone: "success",
-      buttonLabel: "Start New Session",
-      buttonVariant: "secondary",
-      next: STEPS.WELCOME,
-      clearHistory: true,
     },
     [STEPS.SL_HIT_WARNING]: {
       type: "action",
@@ -468,6 +532,7 @@ function getScreen(step) {
       buttonLabel: "I accept. Shut day down.",
       buttonVariant: "danger",
       next: STEPS.DIARY_REMINDER,
+      clearHistory: true,
     },
     [STEPS.DIARY_REMINDER]: {
       type: "action",
@@ -477,17 +542,32 @@ function getScreen(step) {
       tone: "danger",
       buttonLabel: "End Session",
       buttonVariant: "danger",
-      next: STEPS.SESSION_CLOSED_PROTECTED,
-    },
-    [STEPS.SESSION_CLOSED_PROTECTED]: {
-      type: "action",
-      eyebrow: "Session closed",
-      title: "Session closed. You protected yourself today.",
-      tone: "success",
-      buttonLabel: "Start New Session",
-      buttonVariant: "secondary",
-      next: STEPS.WELCOME,
+      next: STEPS.SESSION_CLOSED,
       clearHistory: true,
+    },
+    [STEPS.SESSION_CLOSED]: {
+      type: "session-closed",
+      title:
+        sessionClosedKind === "noDonation"
+          ? "Session ended. No extra donation to the market."
+          : "Session closed. You protected yourself today.",
+      tone: "success",
+    },
+    [STEPS.DO_NOT_ENTER_NEXT_SYMBOL]: {
+      type: "next-symbol",
+      eyebrow:
+        nextSymbolMessage === NEXT_SYMBOL_MESSAGES.viewNext
+          ? "Next setup"
+          : "Stop",
+      title: nextSymbolMessage,
+      tone:
+        nextSymbolMessage === NEXT_SYMBOL_MESSAGES.viewNext
+          ? "default"
+          : "danger",
+      buttonVariant:
+        nextSymbolMessage === NEXT_SYMBOL_MESSAGES.viewNext
+          ? "primary"
+          : "danger",
     },
   };
 
@@ -531,17 +611,23 @@ function StepScreen({ eyebrow, title, detail, tone = "default", actions }) {
 }
 
 function CalculatorScreen({
+  tradeDirection,
   values,
   prices,
   onChange,
   onTargetHit,
   onSlHit,
 }) {
+  const modeLabel = getTradeModeLabel(tradeDirection);
+
   return (
     <div className="calculator-card">
       <div className="calculator-head">
+        <p className={`calculator-mode mode-${tradeDirection || "long"}`}>
+          Calculator Mode: {modeLabel}
+        </p>
         <p className="eyebrow">Target calculator</p>
-        <h1 className="calculator-title">Long trade levels</h1>
+        <h1 className="calculator-title">Trade levels</h1>
       </div>
 
       <div className="input-grid">
@@ -578,9 +664,19 @@ function CalculatorScreen({
       </div>
 
       <div className="price-grid" aria-live="polite">
-        <PriceCard label="Target 1 Price" value={formatPrice(prices?.target1Price)} />
-        <PriceCard label="Target 2 Price" value={formatPrice(prices?.target2Price)} />
-        <PriceCard label="Stop Loss Price" value={formatPrice(prices?.stopLossPrice)} danger />
+        <PriceCard
+          label="Target 1 Price"
+          value={formatPrice(prices?.target1Price)}
+        />
+        <PriceCard
+          label="Target 2 Price"
+          value={formatPrice(prices?.target2Price)}
+        />
+        <PriceCard
+          label="Stop Loss Price"
+          value={formatPrice(prices?.stopLossPrice)}
+          danger
+        />
       </div>
 
       <div className="calculator-actions">
@@ -621,7 +717,7 @@ function NumberInput({ label, value, onChange, placeholder }) {
 
 function PriceCard({ label, value, danger = false }) {
   return (
-    <div className={`price-card ${danger ? "price-danger" : ""}`}>
+    <div className={`price-card ${danger ? "price-danger" : "price-target"}`}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>

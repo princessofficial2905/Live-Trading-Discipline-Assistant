@@ -94,14 +94,20 @@ The app uses step IDs inside `src/App.jsx`, not routing or a backend. This keeps
 Current major sections:
 
 - Welcome reminder
-- TradingView checklist path
+- TradingView checklist path with Strong Low or Strong High selection
+- Zero-volume, rough bar, and stretched-wick candle checks
 - Zerodha checklist path
 - Strict SL reminder before entry
-- Target calculator
+- BUY/LONG and SELL/SHORT target calculator modes
 - Target hit flow
 - SL hit shutdown flow
 
 ## Calculator Formula
+
+The calculator mode is selected earlier in the checklist:
+
+- Strong Low leads to the BUY/LONG calculator.
+- Strong High leads to the SELL/SHORT calculator.
 
 For long/buy trades:
 
@@ -111,4 +117,12 @@ Target 2 Price = Entry Price + Target 2 Profit Amount / Quantity
 Stop Loss Price = Entry Price - Max Risk Amount / Quantity
 ```
 
-The code is structured so a short/sell mode can be added later.
+For short/sell trades:
+
+```text
+Target 1 Price = Entry Price - Target 1 Profit Amount / Quantity
+Target 2 Price = Entry Price - Target 2 Profit Amount / Quantity
+Stop Loss Price = Entry Price + Max Risk Amount / Quantity
+```
+
+No user data is saved permanently. Checklist state and calculator values only live in the current browser session while the app is open.

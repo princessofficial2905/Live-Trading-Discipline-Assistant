@@ -259,6 +259,33 @@ button {
   text-align: center;
 }
 
+.calculator-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  margin: 0 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #ffffff;
+  font-size: 0.84rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.mode-long {
+  border-color: rgba(40, 199, 111, 0.36);
+  background: rgba(40, 199, 111, 0.12);
+}
+
+.mode-short {
+  border-color: rgba(255, 63, 79, 0.42);
+  background: rgba(255, 63, 79, 0.13);
+}
+
 .calculator-title {
   margin: 8px 0 0;
   font-size: clamp(1.8rem, 8vw, 2.7rem);
@@ -326,6 +353,20 @@ button {
   padding: 14px;
 }
 
+.price-target {
+  border-color: rgba(40, 199, 111, 0.26);
+  background:
+    linear-gradient(180deg, rgba(40, 199, 111, 0.12), transparent 78%),
+    var(--panel-strong);
+}
+
+.price-danger {
+  border-color: rgba(255, 63, 79, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 63, 79, 0.16), transparent 76%),
+    var(--panel-strong);
+}
+
 .price-card span {
   color: var(--muted);
   font-size: 0.78rem;
@@ -340,6 +381,10 @@ button {
   font-weight: 950;
   letter-spacing: 0;
   line-height: 1;
+}
+
+.price-target strong {
+  color: #d8ffe9;
 }
 
 .price-danger strong {
