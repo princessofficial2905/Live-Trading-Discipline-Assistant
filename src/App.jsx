@@ -514,7 +514,7 @@ function getScreen(
       title: "Stretched-wick candle check",
       detail: "Were there any stretched-wick candles?",
       titleSize: "medium",
-      yes: STEPS.OPEN_ZERODHA,
+      yes: tradeDirection === "short" ? STEPS.REMIND_SL : STEPS.OPEN_ZERODHA,
       yesLabel: "No stretched-wick candles",
       yesVariant: "success",
       noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
