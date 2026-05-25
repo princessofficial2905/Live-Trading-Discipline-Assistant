@@ -12,6 +12,10 @@ This is not a trading signal app. It does not predict market direction, connect 
 
 ## Trading Session Lock
 
+The BUY / LONG flow now includes OSM Green line confirmation after the NO'S checklist and before the SL reminder.
+
+The SELL / SHORT flow now includes OSM Red line confirmation after the NO'S checklist and before the SL reminder.
+
 The Trading Session flow locks for 6 hours only after:
 
 - The calculator step is completed.

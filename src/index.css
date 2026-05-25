@@ -446,6 +446,52 @@ button:not(:disabled) {
   background: linear-gradient(180deg, var(--red), var(--red-deep));
 }
 
+.secondary-action {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 84%),
+    #1a1f29;
+  color: #f4f6fb;
+}
+
+.osm-screen {
+  grid-template-rows: auto 1fr auto;
+}
+
+.osm-copy {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.osm-copy h1 {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(1.02rem, 4.4vw, 1.18rem);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.16;
+  text-transform: uppercase;
+}
+
+.osm-question {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(2.1rem, 10vw, 3.45rem);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1;
+  text-wrap: balance;
+}
+
+.osm-actions {
+  display: grid;
+  gap: 12px;
+}
+
 .checklist-screen {
   grid-template-rows: auto 1fr auto;
 }

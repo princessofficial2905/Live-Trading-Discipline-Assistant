@@ -19,6 +19,7 @@ const TRADING_STEPS = {
   BLESSING_TOOKED: "TRADING_BLESSING_TOOKED",
   BLUE_BLACK_MOVEMENT: "TRADING_BLUE_BLACK_MOVEMENT",
   LONG_NOS_CHECKLIST: "TRADING_LONG_NOS_CHECKLIST",
+  LONG_OSM_CONFIRMATION: "TRADING_LONG_OSM_CONFIRMATION",
   LONG_SL_REMINDER: "TRADING_LONG_SL_REMINDER",
   LONG_ENTER: "TRADING_LONG_ENTER",
   LONG_CALCULATOR: "TRADING_LONG_CALCULATOR",
@@ -27,6 +28,7 @@ const TRADING_STEPS = {
   SELL_ALERT_TIMEFRAME: "TRADING_SELL_ALERT_TIMEFRAME",
   STRONG_HIGH: "TRADING_STRONG_HIGH",
   SHORT_NOS_CHECKLIST: "TRADING_SHORT_NOS_CHECKLIST",
+  SHORT_OSM_CONFIRMATION: "TRADING_SHORT_OSM_CONFIRMATION",
   SHORT_SL_REMINDER: "TRADING_SHORT_SL_REMINDER",
   SHORT_ENTER: "TRADING_SHORT_ENTER",
   SHORT_CALCULATOR: "TRADING_SHORT_CALCULATOR",
@@ -246,6 +248,7 @@ function App() {
     TRADING_STEPS.BLESSING_TOOKED,
     TRADING_STEPS.BLUE_BLACK_MOVEMENT,
     TRADING_STEPS.LONG_NOS_CHECKLIST,
+    TRADING_STEPS.LONG_OSM_CONFIRMATION,
     TRADING_STEPS.LONG_SL_REMINDER,
     TRADING_STEPS.LONG_ENTER,
   ].includes(tradingStep);
@@ -382,8 +385,8 @@ function App() {
 
     setTradingStep(
       whichChecklist === TRADE_DIRECTIONS.SHORT
-        ? TRADING_STEPS.SHORT_SL_REMINDER
-        : TRADING_STEPS.LONG_SL_REMINDER,
+        ? TRADING_STEPS.SHORT_OSM_CONFIRMATION
+        : TRADING_STEPS.LONG_OSM_CONFIRMATION,
     );
   }
 
@@ -504,6 +507,18 @@ function App() {
             onDone={() => completeChecklist(TRADE_DIRECTIONS.LONG)}
           />
         );
+      case TRADING_STEPS.LONG_OSM_CONFIRMATION:
+        return (
+          <OsmConfirmationScreen
+            topSlot={sellAlert}
+            question="Price above OSM Green line?"
+            confirmLabel="Yes, above OSM Green"
+            rejectLabel="No, not above"
+            onConfirm={() => setTradingStep(TRADING_STEPS.LONG_SL_REMINDER)}
+            onReject={() => goHome()}
+            tone="long"
+          />
+        );
       case TRADING_STEPS.LONG_SL_REMINDER:
         return (
           <StepScreen
@@ -581,6 +596,17 @@ function App() {
             states={shortChecklist}
             onToggle={(index) => updateChecklist(TRADE_DIRECTIONS.SHORT, index)}
             onDone={() => completeChecklist(TRADE_DIRECTIONS.SHORT)}
+          />
+        );
+      case TRADING_STEPS.SHORT_OSM_CONFIRMATION:
+        return (
+          <OsmConfirmationScreen
+            question="Price below OSM Red line?"
+            confirmLabel="Yes, below OSM Red"
+            rejectLabel="No, not below"
+            onConfirm={() => setTradingStep(TRADING_STEPS.SHORT_SL_REMINDER)}
+            onReject={() => goHome()}
+            tone="short"
           />
         );
       case TRADING_STEPS.SHORT_SL_REMINDER:
@@ -796,6 +822,43 @@ function SellAlertButton({ onClick }) {
     <button className="sell-alert-button" type="button" onClick={onClick}>
       SELL! SELL! SELL! ALERT
     </button>
+  );
+}
+
+function OsmConfirmationScreen({
+  question,
+  confirmLabel,
+  rejectLabel,
+  onConfirm,
+  onReject,
+  topSlot = null,
+  tone = "default",
+}) {
+  const confirmClass =
+    tone === TRADE_DIRECTIONS.SHORT
+      ? "primary-action danger-action"
+      : "primary-action success-action";
+
+  return (
+    <article className={`step-screen osm-screen tone-${tone}`}>
+      <div className="screen-top">{topSlot}</div>
+      <div className="osm-copy">
+        <h1>OSM Confirmation</h1>
+        <p className="osm-question">{question}</p>
+      </div>
+      <div className="osm-actions">
+        <button className={confirmClass} type="button" onClick={onConfirm}>
+          {confirmLabel}
+        </button>
+        <button
+          className="primary-action secondary-action"
+          type="button"
+          onClick={onReject}
+        >
+          {rejectLabel}
+        </button>
+      </div>
+    </article>
   );
 }
 
