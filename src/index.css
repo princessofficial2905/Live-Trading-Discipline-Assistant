@@ -189,7 +189,7 @@ button:not(:disabled) {
 
 .lock-panel {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   padding: 18px;
 }
 
@@ -219,6 +219,80 @@ button:not(:disabled) {
   font-size: clamp(1.1rem, 4.8vw, 1.3rem);
   font-weight: 950;
   letter-spacing: 0;
+}
+
+.lock-sync-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.lock-sync-title {
+  color: #ffffff;
+  font-size: clamp(0.98rem, 4.2vw, 1.1rem);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.lock-link-box {
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.065);
+  color: #fff8f9;
+  padding: 12px;
+  font-size: clamp(0.9rem, 3.8vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.lock-link-box:focus {
+  border-color: rgba(63, 134, 255, 0.86);
+  box-shadow: 0 0 0 3px rgba(63, 134, 255, 0.16);
+}
+
+.copy-lock-button {
+  width: 100%;
+  min-height: 66px;
+  border: 0;
+  border-radius: 8px;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, var(--blue), var(--blue-deep));
+  color: #ffffff;
+  font-size: clamp(1.08rem, 4.8vw, 1.25rem);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.08;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
+}
+
+.copy-lock-button:active {
+  transform: translateY(1px) scale(0.995);
+}
+
+.copy-lock-message,
+.lock-sync-helper {
+  font-size: clamp(0.92rem, 3.9vw, 1rem);
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.copy-lock-message {
+  color: #c7ffde;
+  font-weight: 950;
+}
+
+.lock-sync-helper {
+  color: #f1dfe2;
+  font-weight: 800;
 }
 
 .home-notice {
@@ -592,6 +666,7 @@ button:not(:disabled) {
   background: rgba(41, 200, 121, 0.11);
 }
 
+.calculator-warning,
 .allocation-warning {
   margin: 0;
   border: 1px solid rgba(255, 64, 82, 0.42);

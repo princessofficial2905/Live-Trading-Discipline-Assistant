@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 const LOCK_STORAGE_KEY = "tradingSessionLockedUntil";
-const TEN_MINUTES_MS = 10 * 60 * 1000;
+const LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
+const LOCK_SYNC_URL =
+  "https://princessofficial2905.github.io/Live-Trading-Discipline-Assistant/";
 
 const SECTIONS = {
   HOME: "home",
@@ -116,6 +118,34 @@ function readStoredLock() {
   return timestamp;
 }
 
+function readLockFromUrl() {
+  const url = new URL(window.location.href);
+
+  if (!url.searchParams.has("lockedUntil")) {
+    return null;
+  }
+
+  const timestamp = Number(url.searchParams.get("lockedUntil"));
+  const isValidLock = Number.isFinite(timestamp) && Date.now() < timestamp;
+
+  if (isValidLock) {
+    window.localStorage.setItem(LOCK_STORAGE_KEY, String(timestamp));
+  } else {
+    readStoredLock();
+  }
+
+  url.searchParams.delete("lockedUntil");
+  const cleanSearch = url.searchParams.toString();
+  const cleanUrl = `${url.pathname}${cleanSearch ? `?${cleanSearch}` : ""}`;
+  window.history.replaceState(window.history.state, "", cleanUrl);
+
+  return isValidLock ? timestamp : null;
+}
+
+function createLockSyncLink(timestamp) {
+  return `${LOCK_SYNC_URL}?lockedUntil=${timestamp}`;
+}
+
 function createChecklistState(items) {
   return items.map(() => CHECK_STATES.EMPTY);
 }
@@ -169,10 +199,14 @@ function formatPrice(value) {
 
 function formatCountdown(milliseconds) {
   const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
-  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
+    2,
+    "0",
+  );
   const seconds = String(totalSeconds % 60).padStart(2, "0");
 
-  return `${minutes}:${seconds}`;
+  return `${hours}:${minutes}:${seconds}`;
 }
 
 function App() {
@@ -192,6 +226,8 @@ function App() {
   const [calculatorValues, setCalculatorValues] = useState(
     initialCalculatorValues,
   );
+  const [calculatorCompleted, setCalculatorCompleted] = useState(false);
+  const [calculatorWarning, setCalculatorWarning] = useState("");
   const [allocationChecks, setAllocationChecks] = useState(
     initialAllocationChecks,
   );
@@ -204,6 +240,7 @@ function App() {
 
   const isTradingLocked = lockedUntil ? timeLeftMs > 0 : false;
   const countdown = formatCountdown(timeLeftMs);
+  const lockSyncLink = lockedUntil ? createLockSyncLink(lockedUntil) : "";
   const isLongPreEntry = [
     TRADING_STEPS.STRONG_LOW,
     TRADING_STEPS.BLESSING_TOOKED,
@@ -217,6 +254,18 @@ function App() {
     () => calculatePrices(calculatorValues, tradeDirection),
     [calculatorValues, tradeDirection],
   );
+
+  useEffect(() => {
+    const urlLock = readLockFromUrl();
+
+    if (!urlLock) {
+      return;
+    }
+
+    setLockedUntil(urlLock);
+    setTimeLeftMs(Math.max(0, urlLock - Date.now()));
+    setMainSection(SECTIONS.HOME);
+  }, []);
 
   useEffect(() => {
     if (!lockedUntil) {
@@ -259,6 +308,8 @@ function App() {
     setLongChecklist(createChecklistState(longChecklistItems));
     setShortChecklist(createChecklistState(shortChecklistItems));
     setCalculatorValues(initialCalculatorValues);
+    setCalculatorCompleted(false);
+    setCalculatorWarning("");
     setAllocationChecks(initialAllocationChecks);
     setAllocationWarning("");
   }
@@ -295,6 +346,8 @@ function App() {
     setTradeDirection(TRADE_DIRECTIONS.SHORT);
     setShortChecklist(createChecklistState(shortChecklistItems));
     setCalculatorValues(initialCalculatorValues);
+    setCalculatorCompleted(false);
+    setCalculatorWarning("");
     setAllocationChecks(initialAllocationChecks);
     setAllocationWarning("");
     setTradingStep(TRADING_STEPS.SELL_ALERT_TRADINGVIEW);
@@ -335,10 +388,25 @@ function App() {
   }
 
   function updateCalculatorValue(field, value) {
+    setCalculatorCompleted(false);
+    setCalculatorWarning("");
     setCalculatorValues((currentValues) => ({
       ...currentValues,
       [field]: value,
     }));
+  }
+
+  function completeCalculator(nextStep) {
+    if (!calculatorPrices) {
+      setCalculatorWarning("Complete the calculator first.");
+      return;
+    }
+
+    setCalculatorCompleted(true);
+    setCalculatorWarning("");
+    setAllocationChecks(initialAllocationChecks);
+    setAllocationWarning("");
+    setTradingStep(nextStep);
   }
 
   function updateAllocation(field) {
@@ -350,16 +418,21 @@ function App() {
   }
 
   function completeAllocation() {
+    if (!calculatorCompleted) {
+      setAllocationWarning("Complete the calculator first.");
+      return;
+    }
+
     if (!allocationChecks.sl || !allocationChecks.target) {
       setAllocationWarning("Allot SL and target first.");
       return;
     }
 
-    const nextLockedUntil = Date.now() + TEN_MINUTES_MS;
+    const nextLockedUntil = Date.now() + LOCK_DURATION_MS;
 
     window.localStorage.setItem(LOCK_STORAGE_KEY, String(nextLockedUntil));
     setLockedUntil(nextLockedUntil);
-    setTimeLeftMs(TEN_MINUTES_MS);
+    setTimeLeftMs(LOCK_DURATION_MS);
     resetTradingState();
     setMainSection(SECTIONS.HOME);
   }
@@ -460,8 +533,9 @@ function App() {
             direction={TRADE_DIRECTIONS.LONG}
             values={calculatorValues}
             prices={calculatorPrices}
+            warning={calculatorWarning}
             onChange={updateCalculatorValue}
-            onDone={() => setTradingStep(TRADING_STEPS.LONG_ALLOCATION_CHECK)}
+            onDone={() => completeCalculator(TRADING_STEPS.LONG_ALLOCATION_CHECK)}
           />
         );
       case TRADING_STEPS.LONG_ALLOCATION_CHECK:
@@ -536,8 +610,9 @@ function App() {
             direction={TRADE_DIRECTIONS.SHORT}
             values={calculatorValues}
             prices={calculatorPrices}
+            warning={calculatorWarning}
             onChange={updateCalculatorValue}
-            onDone={() => setTradingStep(TRADING_STEPS.SHORT_ALLOCATION_CHECK)}
+            onDone={() => completeCalculator(TRADING_STEPS.SHORT_ALLOCATION_CHECK)}
           />
         );
       case TRADING_STEPS.SHORT_ALLOCATION_CHECK:
@@ -561,6 +636,7 @@ function App() {
           <HomePage
             isTradingLocked={isTradingLocked}
             countdown={countdown}
+            lockSyncLink={lockSyncLink}
             notice={homeNotice}
             onTrading={startTradingSession}
             onHomework={startHomework}
@@ -578,6 +654,7 @@ function App() {
           <HomePage
             isTradingLocked
             countdown={countdown}
+            lockSyncLink={lockSyncLink}
             notice=""
             onTrading={startTradingSession}
             onHomework={startHomework}
@@ -612,6 +689,7 @@ function App() {
 function HomePage({
   isTradingLocked,
   countdown,
+  lockSyncLink,
   notice,
   onTrading,
   onHomework,
@@ -636,7 +714,7 @@ function HomePage({
           <span>Trading Session</span>
           {isTradingLocked && (
             <small>
-              Trading Session locked.
+              Trading Session locked
               <br />
               Available again in: {countdown}
             </small>
@@ -653,7 +731,10 @@ function HomePage({
       </div>
 
       {isTradingLocked && (
-        <LockedTradingSessionScreen countdown={countdown} />
+        <LockedTradingSessionScreen
+          countdown={countdown}
+          lockSyncLink={lockSyncLink}
+        />
       )}
 
       {notice && <p className="home-notice" role="status">{notice}</p>}
@@ -661,12 +742,51 @@ function HomePage({
   );
 }
 
-function LockedTradingSessionScreen({ countdown }) {
+function LockedTradingSessionScreen({ countdown, lockSyncLink }) {
+  const [copyMessage, setCopyMessage] = useState("");
+
+  useEffect(() => {
+    setCopyMessage("");
+  }, [lockSyncLink]);
+
+  async function copyLockLink() {
+    try {
+      await navigator.clipboard.writeText(lockSyncLink);
+      setCopyMessage("Lock link copied.");
+    } catch {
+      setCopyMessage("Copy failed. Please copy the link manually.");
+    }
+  }
+
   return (
     <section className="lock-panel" aria-live="polite">
-      <h2>Trading Session locked for 10 minutes.</h2>
+      <h2>Trading Session locked for 6 hours.</h2>
       <p>Go Girl Go make yourself win one more day today by showing discipline.</p>
       <strong>Available again in: {countdown}</strong>
+      <div className="lock-sync-section">
+        <p className="lock-sync-title">
+          Use this link to lock another device too:
+        </p>
+        <textarea
+          className="lock-link-box"
+          aria-label="Manual lock sync link"
+          readOnly
+          rows="3"
+          value={lockSyncLink}
+          onFocus={(event) => event.target.select()}
+        />
+        <button className="copy-lock-button" type="button" onClick={copyLockLink}>
+          Copy Lock Link
+        </button>
+        {copyMessage && (
+          <p className="copy-lock-message" role="status">
+            {copyMessage}
+          </p>
+        )}
+        <p className="lock-sync-helper">
+          Open this link on your laptop/phone to show the same lock timer there.
+        </p>
+      </div>
     </section>
   );
 }
@@ -758,7 +878,14 @@ function ChecklistScreen({ items, states, onToggle, onDone, topSlot = null }) {
   );
 }
 
-function CalculatorScreen({ direction, values, prices, onChange, onDone }) {
+function CalculatorScreen({
+  direction,
+  values,
+  prices,
+  warning,
+  onChange,
+  onDone,
+}) {
   const modeLabel =
     direction === TRADE_DIRECTIONS.SHORT ? "SELL / SHORT" : "BUY / LONG";
 
@@ -809,6 +936,7 @@ function CalculatorScreen({ direction, values, prices, onChange, onDone }) {
             danger
           />
         </div>
+        {warning && <p className="calculator-warning">{warning}</p>}
       </div>
 
       <button className="primary-action" type="button" onClick={onDone}>
