@@ -1,30 +1,97 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-const STEPS = {
-  WELCOME: "WELCOME",
-  OPEN_TRADINGVIEW: "OPEN_TRADINGVIEW",
-  ONE_MIN_TIMEFRAME: "ONE_MIN_TIMEFRAME",
-  CHOOSE_STRONG_LINE_TYPE: "CHOOSE_STRONG_LINE_TYPE",
-  CHECK_BARRIER: "CHECK_BARRIER",
-  CHECK_ZERO_VOLUME_CANDLE: "CHECK_ZERO_VOLUME_CANDLE",
-  CHECK_ROUGH_BAR_CANDLES: "CHECK_ROUGH_BAR_CANDLES",
-  CHECK_STRETCHED_WICK_CANDLES: "CHECK_STRETCHED_WICK_CANDLES",
-  OPEN_ZERODHA: "OPEN_ZERODHA",
-  SEARCH_SYMBOL: "SEARCH_SYMBOL",
-  ASK_BLESSINGS_RECEIVED: "ASK_BLESSINGS_RECEIVED",
-  ASK_BLUE_BLACK_MOVEMENT: "ASK_BLUE_BLACK_MOVEMENT",
-  REMIND_SL: "REMIND_SL",
-  ENTER_TRADE: "ENTER_TRADE",
-  CALCULATOR: "CALCULATOR",
-  REMOVE_ACTIVE_ORDER_REMINDER: "REMOVE_ACTIVE_ORDER_REMINDER",
-  TARGET_HIT: "TARGET_HIT",
-  SL_HIT_WARNING: "SL_HIT_WARNING",
-  DIARY_REMINDER: "DIARY_REMINDER",
-  SESSION_CLOSED: "SESSION_CLOSED",
-  DO_NOT_ENTER_NEXT_SYMBOL: "DO_NOT_ENTER_NEXT_SYMBOL",
+const LOCK_STORAGE_KEY = "tradingSessionLockedUntil";
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+
+const SECTIONS = {
+  HOME: "home",
+  TRADING: "trading",
+  HOMEWORK: "homework",
+  ALERTS: "alerts",
 };
 
-const initialCalculator = {
+const TRADING_STEPS = {
+  OPEN_TRADINGVIEW: "TRADING_OPEN_TRADINGVIEW",
+  ONE_MIN_TIMEFRAME: "TRADING_ONE_MIN_TIMEFRAME",
+  STRONG_LOW: "TRADING_STRONG_LOW",
+  BLESSING_TOOKED: "TRADING_BLESSING_TOOKED",
+  BLUE_BLACK_MOVEMENT: "TRADING_BLUE_BLACK_MOVEMENT",
+  LONG_NOS_CHECKLIST: "TRADING_LONG_NOS_CHECKLIST",
+  LONG_SL_REMINDER: "TRADING_LONG_SL_REMINDER",
+  LONG_ENTER: "TRADING_LONG_ENTER",
+  LONG_CALCULATOR: "TRADING_LONG_CALCULATOR",
+  LONG_ALLOCATION_CHECK: "TRADING_LONG_ALLOCATION_CHECK",
+  SELL_ALERT_TRADINGVIEW: "TRADING_SELL_ALERT_TRADINGVIEW",
+  SELL_ALERT_TIMEFRAME: "TRADING_SELL_ALERT_TIMEFRAME",
+  STRONG_HIGH: "TRADING_STRONG_HIGH",
+  SHORT_NOS_CHECKLIST: "TRADING_SHORT_NOS_CHECKLIST",
+  SHORT_SL_REMINDER: "TRADING_SHORT_SL_REMINDER",
+  SHORT_ENTER: "TRADING_SHORT_ENTER",
+  SHORT_CALCULATOR: "TRADING_SHORT_CALCULATOR",
+  SHORT_ALLOCATION_CHECK: "TRADING_SHORT_ALLOCATION_CHECK",
+};
+
+const TRADE_DIRECTIONS = {
+  LONG: "long",
+  SHORT: "short",
+};
+
+const CHECK_STATES = {
+  EMPTY: 0,
+  GREEN: 1,
+  RED: 2,
+};
+
+const longChecklistItems = [
+  "no near red barrier",
+  "no zero-volume candle",
+  "no rough-bar candles",
+  "no stretched-wick candles",
+];
+
+const shortChecklistItems = [
+  "no near blue barrier",
+  "no zero-volume candles",
+  "no rough bar candles",
+  "no stretched-wick candles",
+];
+
+const homeworkSteps = [
+  "Emails: shortlisted ones",
+  "List down",
+  "LTP's",
+  "Qty",
+  "Margin: 1000 → 100/2 = 50\n\n1000 - 50 = 950 → margin",
+  "Replace Zerodha's watchlist",
+  "Put on qty's",
+  "Replace TradingView watchlist",
+  "List all those watchlist's SS + Nifty 50.csv to ChatGPT",
+  "Remove all Nifty 50 symbols from your both watchlists.",
+  "Homework steps complete.",
+];
+
+const alertSteps = [
+  "Nifty Total Market indice",
+  "Alert - I",
+  "Condition: LuxAlgo",
+  "Bullish BOS",
+  "Interval: 1 min",
+  "Trigger: Once Per Minute",
+  "Expiration: 1 week",
+  "Message: BUY! BUY! BUY!",
+  "Notifications: Toasts + Sound",
+  "Alert - II",
+  "Condition: LuxAlgo",
+  "Bearish BOS",
+  "Interval: 1 min",
+  "Trigger: Once Per Minute",
+  "Expiration: 1 week",
+  "Message: SELL! SELL! SELL!",
+  "Notifications: Toasts + Sound",
+  "TradingView alerts setup complete.",
+];
+
+const initialCalculatorValues = {
   entryPrice: "",
   quantity: "",
   target1Amount: "50",
@@ -32,12 +99,28 @@ const initialCalculator = {
   maxRiskAmount: "50",
 };
 
-const NEXT_SYMBOL_MESSAGES = {
-  doNotEnter: "Do not enter. View next symbol in TradingView.",
-  viewNext: "View next symbol in TradingView.",
+const initialAllocationChecks = {
+  sl: false,
+  target: false,
 };
 
-function parseCalculatorNumber(value) {
+function readStoredLock() {
+  const storedValue = window.localStorage.getItem(LOCK_STORAGE_KEY);
+  const timestamp = Number(storedValue);
+
+  if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
+    window.localStorage.removeItem(LOCK_STORAGE_KEY);
+    return null;
+  }
+
+  return timestamp;
+}
+
+function createChecklistState(items) {
+  return items.map(() => CHECK_STATES.EMPTY);
+}
+
+function parseAmount(value) {
   if (String(value).trim() === "") {
     return Number.NaN;
   }
@@ -45,15 +128,14 @@ function parseCalculatorNumber(value) {
   return Number(value);
 }
 
-function calculateTradePrices(values, tradeDirection) {
-  const entryPrice = parseCalculatorNumber(values.entryPrice);
-  const quantity = parseCalculatorNumber(values.quantity);
-  const target1Amount = parseCalculatorNumber(values.target1Amount);
-  const target2Amount = parseCalculatorNumber(values.target2Amount);
-  const maxRiskAmount = parseCalculatorNumber(values.maxRiskAmount);
+function calculatePrices(values, direction) {
+  const entryPrice = parseAmount(values.entryPrice);
+  const quantity = parseAmount(values.quantity);
+  const target1Amount = parseAmount(values.target1Amount);
+  const target2Amount = parseAmount(values.target2Amount);
+  const maxRiskAmount = parseAmount(values.maxRiskAmount);
 
   if (
-    !tradeDirection ||
     !Number.isFinite(entryPrice) ||
     !Number.isFinite(quantity) ||
     !Number.isFinite(target1Amount) ||
@@ -64,12 +146,13 @@ function calculateTradePrices(values, tradeDirection) {
     return null;
   }
 
-  const direction = tradeDirection === "short" ? -1 : 1;
+  const directionMultiplier = direction === TRADE_DIRECTIONS.SHORT ? -1 : 1;
 
   return {
-    target1Price: entryPrice + direction * (target1Amount / quantity),
-    target2Price: entryPrice + direction * (target2Amount / quantity),
-    stopLossPrice: entryPrice - direction * (maxRiskAmount / quantity),
+    target1Price: entryPrice + directionMultiplier * (target1Amount / quantity),
+    target2Price: entryPrice + directionMultiplier * (target2Amount / quantity),
+    stopLossPrice:
+      entryPrice - directionMultiplier * (maxRiskAmount / quantity),
   };
 }
 
@@ -78,144 +161,177 @@ function formatPrice(value) {
     return "--";
   }
 
-  const absoluteValue = Math.abs(value);
-  const decimals =
-    absoluteValue > 0 && absoluteValue < 0.01
-      ? 6
-      : absoluteValue > 0 && absoluteValue < 1
-        ? 4
-        : 2;
-
   return value.toLocaleString("en-IN", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
-function getTradeModeLabel(tradeDirection) {
-  return tradeDirection === "short" ? "SELL / SHORT" : "BUY / LONG";
+function formatCountdown(milliseconds) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+
+  return `${minutes}:${seconds}`;
 }
 
 function App() {
-  const [step, setStep] = useState(STEPS.WELCOME);
-  const [history, setHistory] = useState([]);
-  const [restartArmed, setRestartArmed] = useState(false);
+  const [mainSection, setMainSection] = useState(SECTIONS.HOME);
+  const [tradingStep, setTradingStep] = useState(
+    TRADING_STEPS.OPEN_TRADINGVIEW,
+  );
+  const [homeworkIndex, setHomeworkIndex] = useState(0);
+  const [alertsIndex, setAlertsIndex] = useState(0);
   const [tradeDirection, setTradeDirection] = useState(null);
-  const [selectedLineType, setSelectedLineType] = useState(null);
-  const [pendingCloseAction, setPendingCloseAction] = useState(null);
-  const [sessionClosedKind, setSessionClosedKind] = useState("protected");
-  const [nextSymbolMessage, setNextSymbolMessage] = useState(
-    NEXT_SYMBOL_MESSAGES.doNotEnter,
+  const [longChecklist, setLongChecklist] = useState(() =>
+    createChecklistState(longChecklistItems),
   );
-  const [calculatorValues, setCalculatorValues] = useState(initialCalculator);
+  const [shortChecklist, setShortChecklist] = useState(() =>
+    createChecklistState(shortChecklistItems),
+  );
+  const [calculatorValues, setCalculatorValues] = useState(
+    initialCalculatorValues,
+  );
+  const [allocationChecks, setAllocationChecks] = useState(
+    initialAllocationChecks,
+  );
+  const [allocationWarning, setAllocationWarning] = useState("");
+  const [homeNotice, setHomeNotice] = useState("");
+  const [lockedUntil, setLockedUntil] = useState(() => readStoredLock());
+  const [timeLeftMs, setTimeLeftMs] = useState(() =>
+    lockedUntil ? Math.max(0, lockedUntil - Date.now()) : 0,
+  );
 
-  const screen = useMemo(
-    () =>
-      getScreen(
-        step,
-        tradeDirection,
-        selectedLineType,
-        sessionClosedKind,
-        nextSymbolMessage,
-      ),
-    [
-      step,
-      tradeDirection,
-      selectedLineType,
-      sessionClosedKind,
-      nextSymbolMessage,
-    ],
-  );
-  const prices = useMemo(
-    () => calculateTradePrices(calculatorValues, tradeDirection),
+  const isTradingLocked = lockedUntil ? timeLeftMs > 0 : false;
+  const countdown = formatCountdown(timeLeftMs);
+  const isLongPreEntry = [
+    TRADING_STEPS.STRONG_LOW,
+    TRADING_STEPS.BLESSING_TOOKED,
+    TRADING_STEPS.BLUE_BLACK_MOVEMENT,
+    TRADING_STEPS.LONG_NOS_CHECKLIST,
+    TRADING_STEPS.LONG_SL_REMINDER,
+    TRADING_STEPS.LONG_ENTER,
+  ].includes(tradingStep);
+
+  const calculatorPrices = useMemo(
+    () => calculatePrices(calculatorValues, tradeDirection),
     [calculatorValues, tradeDirection],
   );
 
-  const isLockedShutdown =
-    [STEPS.SL_HIT_WARNING, STEPS.DIARY_REMINDER, STEPS.SESSION_CLOSED].includes(
-      step,
-    ) ||
-    (step === STEPS.REMOVE_ACTIVE_ORDER_REMINDER &&
-      pendingCloseAction === "sl");
-
-  const canGoBack =
-    history.length > 0 && ![STEPS.WELCOME].includes(step) && !isLockedShutdown;
-
-  const canReset = ![STEPS.WELCOME].includes(step) && !isLockedShutdown;
-
-  function goTo(nextStep, options = {}) {
-    setRestartArmed(false);
-    if (options.clearHistory) {
-      setHistory([]);
-    } else {
-      setHistory((currentHistory) => [...currentHistory, step]);
+  useEffect(() => {
+    if (!lockedUntil) {
+      setTimeLeftMs(0);
+      return undefined;
     }
-    setStep(nextStep);
+
+    function syncCountdown() {
+      const remainingMs = lockedUntil - Date.now();
+
+      if (remainingMs <= 0) {
+        window.localStorage.removeItem(LOCK_STORAGE_KEY);
+        setLockedUntil(null);
+        setTimeLeftMs(0);
+        return;
+      }
+
+      setTimeLeftMs(remainingMs);
+    }
+
+    syncCountdown();
+    const intervalId = window.setInterval(syncCountdown, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [lockedUntil]);
+
+  useEffect(() => {
+    if (!homeNotice) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setHomeNotice(""), 3600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [homeNotice]);
+
+  function resetTradingState() {
+    setTradingStep(TRADING_STEPS.OPEN_TRADINGVIEW);
+    setTradeDirection(null);
+    setLongChecklist(createChecklistState(longChecklistItems));
+    setShortChecklist(createChecklistState(shortChecklistItems));
+    setCalculatorValues(initialCalculatorValues);
+    setAllocationChecks(initialAllocationChecks);
+    setAllocationWarning("");
   }
 
-  function goBack() {
-    const previousStep = history[history.length - 1];
-    if (!previousStep) {
+  function goHome(message = "") {
+    resetTradingState();
+    setMainSection(SECTIONS.HOME);
+    setHomeNotice(message);
+  }
+
+  function startTradingSession() {
+    if (isTradingLocked) {
       return;
     }
 
-    setRestartArmed(false);
-    setStep(previousStep);
-    setHistory(history.slice(0, -1));
+    resetTradingState();
+    setHomeNotice("");
+    setMainSection(SECTIONS.TRADING);
   }
 
-  function resetSession() {
-    setStep(STEPS.WELCOME);
-    setHistory([]);
-    setRestartArmed(false);
-    setTradeDirection(null);
-    setSelectedLineType(null);
-    setPendingCloseAction(null);
-    setSessionClosedKind("protected");
-    setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
-    setCalculatorValues(initialCalculator);
+  function startHomework() {
+    setHomeworkIndex(0);
+    setHomeNotice("");
+    setMainSection(SECTIONS.HOMEWORK);
   }
 
-  function requestRestart() {
-    if (restartArmed) {
-      resetSession();
+  function startAlerts() {
+    setAlertsIndex(0);
+    setHomeNotice("");
+    setMainSection(SECTIONS.ALERTS);
+  }
+
+  function switchToShortFlow() {
+    setTradeDirection(TRADE_DIRECTIONS.SHORT);
+    setShortChecklist(createChecklistState(shortChecklistItems));
+    setCalculatorValues(initialCalculatorValues);
+    setAllocationChecks(initialAllocationChecks);
+    setAllocationWarning("");
+    setTradingStep(TRADING_STEPS.SELL_ALERT_TRADINGVIEW);
+  }
+
+  function updateChecklist(whichChecklist, index) {
+    const update = (currentState) =>
+      currentState.map((state, stateIndex) =>
+        stateIndex === index
+          ? (state + 1) % 3
+          : state,
+      );
+
+    if (whichChecklist === TRADE_DIRECTIONS.SHORT) {
+      setShortChecklist(update);
       return;
     }
 
-    setRestartArmed(true);
-    window.setTimeout(() => {
-      setRestartArmed(false);
-    }, 2400);
+    setLongChecklist(update);
   }
 
-  function startChecklist() {
-    setTradeDirection(null);
-    setPendingCloseAction(null);
-    setSessionClosedKind("protected");
-    setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
-    setSelectedLineType(null);
-    setCalculatorValues(initialCalculator);
-    goTo(STEPS.OPEN_TRADINGVIEW, { clearHistory: true });
-  }
+  function completeChecklist(whichChecklist) {
+    const checklist =
+      whichChecklist === TRADE_DIRECTIONS.SHORT
+        ? shortChecklist
+        : longChecklist;
 
-  function chooseStrongLine(nextTradeDirection, nextLineType) {
-    setTradeDirection(nextTradeDirection);
-    setSelectedLineType(nextLineType);
-    goTo(STEPS.CHECK_BARRIER);
-  }
+    if (!checklist.every((state) => state === CHECK_STATES.GREEN)) {
+      goHome("Checklist not all green. Trading Session stayed unlocked.");
+      return;
+    }
 
-  function showNextSymbol(message) {
-    setNextSymbolMessage(message);
-    goTo(STEPS.DO_NOT_ENTER_NEXT_SYMBOL);
-  }
-
-  function startNextSymbol() {
-    setTradeDirection(null);
-    setSelectedLineType(null);
-    setPendingCloseAction(null);
-    setNextSymbolMessage(NEXT_SYMBOL_MESSAGES.doNotEnter);
-    setCalculatorValues(initialCalculator);
-    goTo(STEPS.OPEN_TRADINGVIEW, { clearHistory: true });
+    setTradingStep(
+      whichChecklist === TRADE_DIRECTIONS.SHORT
+        ? TRADING_STEPS.SHORT_SL_REMINDER
+        : TRADING_STEPS.LONG_SL_REMINDER,
+    );
   }
 
   function updateCalculatorValue(field, value) {
@@ -225,546 +341,484 @@ function App() {
     }));
   }
 
-  function handleTargetHit() {
-    setPendingCloseAction("target");
-    goTo(STEPS.REMOVE_ACTIVE_ORDER_REMINDER);
+  function updateAllocation(field) {
+    setAllocationWarning("");
+    setAllocationChecks((currentChecks) => ({
+      ...currentChecks,
+      [field]: !currentChecks[field],
+    }));
   }
 
-  function handleSlHit() {
-    setPendingCloseAction("sl");
-    goTo(STEPS.REMOVE_ACTIVE_ORDER_REMINDER);
-  }
-
-  function completeActiveOrderReminder() {
-    if (pendingCloseAction === "sl") {
-      goTo(STEPS.SL_HIT_WARNING, { clearHistory: true });
+  function completeAllocation() {
+    if (!allocationChecks.sl || !allocationChecks.target) {
+      setAllocationWarning("Allot SL and target first.");
       return;
     }
 
-    goTo(STEPS.TARGET_HIT);
+    const nextLockedUntil = Date.now() + TEN_MINUTES_MS;
+
+    window.localStorage.setItem(LOCK_STORAGE_KEY, String(nextLockedUntil));
+    setLockedUntil(nextLockedUntil);
+    setTimeLeftMs(TEN_MINUTES_MS);
+    resetTradingState();
+    setMainSection(SECTIONS.HOME);
   }
 
-  function closeSession(kind) {
-    setSessionClosedKind(kind);
-    setPendingCloseAction(null);
-    goTo(STEPS.SESSION_CLOSED, { clearHistory: true });
+  function renderTradingStep() {
+    const sellAlert = isLongPreEntry ? (
+      <SellAlertButton onClick={switchToShortFlow} />
+    ) : null;
+
+    switch (tradingStep) {
+      case TRADING_STEPS.OPEN_TRADINGVIEW:
+        return (
+          <StepScreen
+            title="Open TradingView"
+            buttonLabel="Done"
+            onNext={() => setTradingStep(TRADING_STEPS.ONE_MIN_TIMEFRAME)}
+          />
+        );
+      case TRADING_STEPS.ONE_MIN_TIMEFRAME:
+        return (
+          <StepScreen
+            title="1 minute timeframe"
+            buttonLabel="Done"
+            onNext={() => setTradingStep(TRADING_STEPS.STRONG_LOW)}
+          />
+        );
+      case TRADING_STEPS.STRONG_LOW:
+        return (
+          <StepScreen
+            topSlot={sellAlert}
+            title="Strong Low!"
+            buttonLabel="Strong Low!"
+            onNext={() => {
+              setTradeDirection(TRADE_DIRECTIONS.LONG);
+              setTradingStep(TRADING_STEPS.BLESSING_TOOKED);
+            }}
+            tone="long"
+          />
+        );
+      case TRADING_STEPS.BLESSING_TOOKED:
+        return (
+          <DecisionScreen
+            topSlot={sellAlert}
+            title="Blessing tooked?"
+            yesLabel="Yes"
+            noLabel="No"
+            onYes={() => setTradingStep(TRADING_STEPS.BLUE_BLACK_MOVEMENT)}
+            onNo={() => goHome()}
+          />
+        );
+      case TRADING_STEPS.BLUE_BLACK_MOVEMENT:
+        return (
+          <DecisionScreen
+            topSlot={sellAlert}
+            title="Proper Blue/Black movement?"
+            yesLabel="Yes"
+            noLabel="No"
+            onYes={() => setTradingStep(TRADING_STEPS.LONG_NOS_CHECKLIST)}
+            onNo={() => goHome()}
+          />
+        );
+      case TRADING_STEPS.LONG_NOS_CHECKLIST:
+        return (
+          <ChecklistScreen
+            topSlot={sellAlert}
+            items={longChecklistItems}
+            states={longChecklist}
+            onToggle={(index) => updateChecklist(TRADE_DIRECTIONS.LONG, index)}
+            onDone={() => completeChecklist(TRADE_DIRECTIONS.LONG)}
+          />
+        );
+      case TRADING_STEPS.LONG_SL_REMINDER:
+        return (
+          <StepScreen
+            topSlot={sellAlert}
+            title="Before entering: Put SL below that strong low line."
+            buttonLabel="Done"
+            onNext={() => setTradingStep(TRADING_STEPS.LONG_ENTER)}
+            tone="danger"
+          />
+        );
+      case TRADING_STEPS.LONG_ENTER:
+        return (
+          <StepScreen
+            topSlot={sellAlert}
+            title="Enter trade"
+            buttonLabel="I entered"
+            onNext={() => {
+              setTradeDirection(TRADE_DIRECTIONS.LONG);
+              setTradingStep(TRADING_STEPS.LONG_CALCULATOR);
+            }}
+            tone="long"
+          />
+        );
+      case TRADING_STEPS.LONG_CALCULATOR:
+        return (
+          <CalculatorScreen
+            direction={TRADE_DIRECTIONS.LONG}
+            values={calculatorValues}
+            prices={calculatorPrices}
+            onChange={updateCalculatorValue}
+            onDone={() => setTradingStep(TRADING_STEPS.LONG_ALLOCATION_CHECK)}
+          />
+        );
+      case TRADING_STEPS.LONG_ALLOCATION_CHECK:
+        return (
+          <AllocationCheckScreen
+            checks={allocationChecks}
+            warning={allocationWarning}
+            onToggle={updateAllocation}
+            onComplete={completeAllocation}
+          />
+        );
+      case TRADING_STEPS.SELL_ALERT_TRADINGVIEW:
+        return (
+          <StepScreen
+            title="TradingView"
+            buttonLabel="Done"
+            onNext={() => setTradingStep(TRADING_STEPS.SELL_ALERT_TIMEFRAME)}
+            tone="short"
+          />
+        );
+      case TRADING_STEPS.SELL_ALERT_TIMEFRAME:
+        return (
+          <StepScreen
+            title="Timeframe: 1 min"
+            buttonLabel="Done"
+            onNext={() => setTradingStep(TRADING_STEPS.STRONG_HIGH)}
+            tone="short"
+          />
+        );
+      case TRADING_STEPS.STRONG_HIGH:
+        return (
+          <StepScreen
+            title="Strong High."
+            buttonLabel="Done"
+            onNext={() => setTradingStep(TRADING_STEPS.SHORT_NOS_CHECKLIST)}
+            tone="short"
+          />
+        );
+      case TRADING_STEPS.SHORT_NOS_CHECKLIST:
+        return (
+          <ChecklistScreen
+            items={shortChecklistItems}
+            states={shortChecklist}
+            onToggle={(index) => updateChecklist(TRADE_DIRECTIONS.SHORT, index)}
+            onDone={() => completeChecklist(TRADE_DIRECTIONS.SHORT)}
+          />
+        );
+      case TRADING_STEPS.SHORT_SL_REMINDER:
+        return (
+          <StepScreen
+            title="Before entering: Put SL above that strong high line."
+            buttonLabel="Done"
+            onNext={() => setTradingStep(TRADING_STEPS.SHORT_ENTER)}
+            tone="danger"
+          />
+        );
+      case TRADING_STEPS.SHORT_ENTER:
+        return (
+          <StepScreen
+            title=""
+            buttonLabel="I am entering"
+            onNext={() => {
+              setTradeDirection(TRADE_DIRECTIONS.SHORT);
+              setTradingStep(TRADING_STEPS.SHORT_CALCULATOR);
+            }}
+            tone="short"
+          />
+        );
+      case TRADING_STEPS.SHORT_CALCULATOR:
+        return (
+          <CalculatorScreen
+            direction={TRADE_DIRECTIONS.SHORT}
+            values={calculatorValues}
+            prices={calculatorPrices}
+            onChange={updateCalculatorValue}
+            onDone={() => setTradingStep(TRADING_STEPS.SHORT_ALLOCATION_CHECK)}
+          />
+        );
+      case TRADING_STEPS.SHORT_ALLOCATION_CHECK:
+        return (
+          <AllocationCheckScreen
+            checks={allocationChecks}
+            warning={allocationWarning}
+            onToggle={updateAllocation}
+            onComplete={completeAllocation}
+          />
+        );
+      default:
+        return null;
+    }
   }
 
   return (
-    <main className={`app-shell tone-${screen.tone || "default"}`}>
+    <main className="app-shell">
       <div className="phone-frame">
-        <header className="top-bar" aria-label="Session controls">
-          {canGoBack ? (
-            <button className="top-control" type="button" onClick={goBack}>
-              Back
-            </button>
-          ) : (
-            <span className="top-control-placeholder" />
-          )}
+        {mainSection === SECTIONS.HOME && (
+          <HomePage
+            isTradingLocked={isTradingLocked}
+            countdown={countdown}
+            notice={homeNotice}
+            onTrading={startTradingSession}
+            onHomework={startHomework}
+            onAlerts={startAlerts}
+          />
+        )}
 
-          <span className="app-kicker">Live Trading Discipline Assistant</span>
+        {mainSection === SECTIONS.TRADING && !isTradingLocked && (
+          <section className="flow-shell" key={tradingStep}>
+            {renderTradingStep()}
+          </section>
+        )}
 
-          {canReset ? (
-            <button
-              className={`top-control reset-control ${
-                restartArmed ? "armed" : ""
-              }`}
-              type="button"
-              onClick={requestRestart}
-            >
-              {restartArmed ? "Confirm" : "Reset"}
-            </button>
-          ) : (
-            <span className="top-control-placeholder" />
-          )}
-        </header>
+        {mainSection === SECTIONS.TRADING && isTradingLocked && (
+          <HomePage
+            isTradingLocked
+            countdown={countdown}
+            notice=""
+            onTrading={startTradingSession}
+            onHomework={startHomework}
+            onAlerts={startAlerts}
+          />
+        )}
 
-        <section className="screen-shell" key={step}>
-          {step === STEPS.WELCOME && (
-            <StepScreen
-              title="Reminder: Fuck The Idea of Brokerage Donation."
-              tone="danger"
-              actions={[
-                {
-                  label: "Start Session",
-                  onClick: startChecklist,
-                  variant: "primary",
-                },
-              ]}
-            />
-          )}
+        {mainSection === SECTIONS.HOMEWORK && (
+          <LinearFlow
+            steps={homeworkSteps}
+            index={homeworkIndex}
+            setIndex={setHomeworkIndex}
+            onHome={() => goHome()}
+            finalButtonLabel="Back to Home"
+          />
+        )}
 
-          {step === STEPS.CHOOSE_STRONG_LINE_TYPE && (
-            <StepScreen
-              eyebrow="TradingView check"
-              title="Any today's line visible near entry?"
-              actions={[
-                {
-                  label: "Strong Low",
-                  onClick: () => chooseStrongLine("long", "strongLow"),
-                  variant: "success",
-                },
-                {
-                  label: "Strong High",
-                  onClick: () => chooseStrongLine("short", "strongHigh"),
-                  variant: "danger",
-                },
-              ]}
-            />
-          )}
-
-          {screen.type === "action" && (
-            <StepScreen
-              eyebrow={screen.eyebrow}
-              title={screen.title}
-              detail={screen.detail}
-              tone={screen.tone}
-              actions={[
-                {
-                  label: screen.buttonLabel,
-                  onClick: () =>
-                    goTo(screen.next, {
-                      clearHistory: screen.clearHistory,
-                    }),
-                  variant: screen.buttonVariant || "primary",
-                },
-              ]}
-            />
-          )}
-
-          {screen.type === "decision" && (
-            <StepScreen
-              eyebrow={screen.eyebrow}
-              title={screen.title}
-              detail={screen.detail}
-              tone={screen.tone}
-              titleSize={screen.titleSize}
-              actions={[
-                {
-                  label: screen.yesLabel || "Yes",
-                  onClick: () => goTo(screen.yes),
-                  variant: screen.yesVariant || "primary",
-                },
-                {
-                  label: screen.noLabel || "No",
-                  onClick: () => showNextSymbol(screen.noMessage),
-                  variant: screen.noVariant || "secondary",
-                },
-              ]}
-            />
-          )}
-
-          {screen.type === "next-symbol" && (
-            <StepScreen
-              eyebrow={screen.eyebrow}
-              title={screen.title}
-              tone={screen.tone}
-              actions={[
-                {
-                  label: "Next Symbol",
-                  onClick: startNextSymbol,
-                  variant: screen.buttonVariant || "primary",
-                },
-              ]}
-            />
-          )}
-
-          {screen.type === "remove-order-reminder" && (
-            <StepScreen
-              eyebrow="Order check"
-              title="Remove, if any active Order/ ATO"
-              tone="danger"
-              actions={[
-                {
-                  label: "Done",
-                  onClick: completeActiveOrderReminder,
-                  variant: "danger",
-                },
-              ]}
-            />
-          )}
-
-          {screen.type === "target-hit" && (
-            <StepScreen
-              eyebrow="Target"
-              title="Target hit. Good. Take the win and stay disciplined."
-              detail="Do you want to check another setup?"
-              tone="success"
-              actions={[
-                {
-                  label: "Yes, restart",
-                  onClick: startNextSymbol,
-                  variant: "success",
-                },
-                {
-                  label: "No, end session",
-                  onClick: () => closeSession("noDonation"),
-                  variant: "secondary",
-                },
-              ]}
-            />
-          )}
-
-          {screen.type === "session-closed" && (
-            <StepScreen
-              eyebrow="Session closed"
-              title={screen.title}
-              tone="success"
-              actions={[
-                {
-                  label: "Start New Session",
-                  onClick: resetSession,
-                  variant: "secondary",
-                },
-              ]}
-            />
-          )}
-
-          {screen.type === "calculator" && (
-            <CalculatorScreen
-              tradeDirection={tradeDirection}
-              values={calculatorValues}
-              prices={prices}
-              onChange={updateCalculatorValue}
-              onTargetHit={handleTargetHit}
-              onSlHit={handleSlHit}
-            />
-          )}
-        </section>
+        {mainSection === SECTIONS.ALERTS && (
+          <LinearFlow
+            steps={alertSteps}
+            index={alertsIndex}
+            setIndex={setAlertsIndex}
+            onHome={() => goHome()}
+            finalButtonLabel="Back to Home"
+          />
+        )}
       </div>
     </main>
   );
 }
 
-function getScreen(
-  step,
-  tradeDirection,
-  selectedLineType,
-  sessionClosedKind,
-  nextSymbolMessage,
-) {
-  const isShortBarrier =
-    tradeDirection === "short" || selectedLineType === "strongHigh";
-  const barrierColor = isShortBarrier ? "blue" : "red";
+function HomePage({
+  isTradingLocked,
+  countdown,
+  notice,
+  onTrading,
+  onHomework,
+  onAlerts,
+}) {
+  return (
+    <section className="home-screen">
+      <div className="home-copy">
+        <p className="app-kicker">Live Trading Discipline Assistant</p>
+        <h1>Reminder: Fuck The Idea of Brokerage Donation.</h1>
+      </div>
 
-  const screens = {
-    [STEPS.WELCOME]: {
-      type: "welcome",
-      tone: "danger",
-    },
-    [STEPS.OPEN_TRADINGVIEW]: {
-      type: "action",
-      eyebrow: "TradingView",
-      title: "Open TradingView",
-      buttonLabel: "Done",
-      next: STEPS.ONE_MIN_TIMEFRAME,
-    },
-    [STEPS.ONE_MIN_TIMEFRAME]: {
-      type: "action",
-      eyebrow: "Timeframe",
-      title: "1 minute timeframe",
-      buttonLabel: "Done",
-      next: STEPS.CHOOSE_STRONG_LINE_TYPE,
-    },
-    [STEPS.CHOOSE_STRONG_LINE_TYPE]: {
-      type: "choice",
-    },
-    [STEPS.CHECK_BARRIER]: {
-      type: "decision",
-      eyebrow: "TradingView check",
-      title: "Barrier Check",
-      detail: `No near ${barrierColor} barrier?`,
-      titleSize: "medium",
-      yes: STEPS.CHECK_ZERO_VOLUME_CANDLE,
-      yesLabel: `No near ${barrierColor} barrier`,
-      yesVariant: "success",
-      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
-      noLabel: `Yes, ${barrierColor} barrier is near`,
-      noVariant: "danger",
-    },
-    [STEPS.CHECK_ZERO_VOLUME_CANDLE]: {
-      type: "decision",
-      eyebrow: "Candle check",
-      title: "Zero-volume candle check",
-      detail: "Were there any zero-volume candles today?",
-      titleSize: "medium",
-      yes: STEPS.CHECK_ROUGH_BAR_CANDLES,
-      yesLabel: "No zero-volume candles",
-      yesVariant: "success",
-      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
-      noLabel: "Yes, zero-volume candle found",
-      noVariant: "danger",
-    },
-    [STEPS.CHECK_ROUGH_BAR_CANDLES]: {
-      type: "decision",
-      eyebrow: "Candle check",
-      title: "Rough bar candle check",
-      detail: "Were there any rough bar-like candles?",
-      titleSize: "medium",
-      yes: STEPS.CHECK_STRETCHED_WICK_CANDLES,
-      yesLabel: "No rough bar candles",
-      yesVariant: "success",
-      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
-      noLabel: "Yes, rough bars found",
-      noVariant: "danger",
-    },
-    [STEPS.CHECK_STRETCHED_WICK_CANDLES]: {
-      type: "decision",
-      eyebrow: "Candle check",
-      title: "Stretched-wick candle check",
-      detail: "Were there any stretched-wick candles?",
-      titleSize: "medium",
-      yes: tradeDirection === "short" ? STEPS.REMIND_SL : STEPS.OPEN_ZERODHA,
-      yesLabel: "No stretched-wick candles",
-      yesVariant: "success",
-      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
-      noLabel: "Yes, stretched wicks found",
-      noVariant: "danger",
-    },
-    [STEPS.OPEN_ZERODHA]: {
-      type: "action",
-      eyebrow: "Zerodha",
-      title: "Open Zerodha",
-      buttonLabel: "Done",
-      next: STEPS.SEARCH_SYMBOL,
-    },
-    [STEPS.SEARCH_SYMBOL]: {
-      type: "action",
-      eyebrow: "Zerodha",
-      title: "Search symbol",
-      buttonLabel: "Done",
-      next: STEPS.ASK_BLESSINGS_RECEIVED,
-    },
-    [STEPS.ASK_BLESSINGS_RECEIVED]: {
-      type: "decision",
-      eyebrow: "Zerodha",
-      title: "Blessings received?",
-      yes: STEPS.ASK_BLUE_BLACK_MOVEMENT,
-      noMessage: NEXT_SYMBOL_MESSAGES.viewNext,
-    },
-    [STEPS.ASK_BLUE_BLACK_MOVEMENT]: {
-      type: "decision",
-      eyebrow: "Zerodha",
-      title: "Proper Blue/Black movement done?",
-      yes: STEPS.REMIND_SL,
-      noMessage: NEXT_SYMBOL_MESSAGES.doNotEnter,
-      noVariant: "danger",
-    },
-    [STEPS.REMIND_SL]: {
-      type: "action",
-      eyebrow: "Risk lock",
-      title:
-        tradeDirection === "short"
-          ? "Before entering: Put SL above that strong high line."
-          : "Before entering: Put SL below that strong low line.",
-      tone: "danger",
-      buttonLabel: "I placed SL mentally / noted it",
-      buttonVariant: "danger",
-      next: STEPS.ENTER_TRADE,
-    },
-    [STEPS.ENTER_TRADE]: {
-      type: "action",
-      eyebrow: "Entry",
-      title: "Enter trade",
-      buttonLabel: "I am entering",
-      next: STEPS.CALCULATOR,
-    },
-    [STEPS.CALCULATOR]: {
-      type: "calculator",
-      tone: "default",
-    },
-    [STEPS.REMOVE_ACTIVE_ORDER_REMINDER]: {
-      type: "remove-order-reminder",
-      tone: "danger",
-    },
-    [STEPS.TARGET_HIT]: {
-      type: "target-hit",
-      tone: "success",
-    },
-    [STEPS.SL_HIT_WARNING]: {
-      type: "action",
-      eyebrow: "Stop",
-      title:
-        "Close your fist as tightly as you can.\nFeel the anger.\nBut control your ass off.\n\nShut your day down.\n\nNo more trading means no more trading.",
-      tone: "danger",
-      buttonLabel: "I accept. Shut day down.",
-      buttonVariant: "danger",
-      next: STEPS.DIARY_REMINDER,
-      clearHistory: true,
-    },
-    [STEPS.DIARY_REMINDER]: {
-      type: "action",
-      eyebrow: "Diary",
-      title:
-        "Go and mark another day where you won this battle in your diary.\n\nA no means no.\n\nOvertrading means over-donation to the market.\n\nCome fresh tomorrow.",
-      tone: "danger",
-      buttonLabel: "End Session",
-      buttonVariant: "danger",
-      next: STEPS.SESSION_CLOSED,
-      clearHistory: true,
-    },
-    [STEPS.SESSION_CLOSED]: {
-      type: "session-closed",
-      title:
-        sessionClosedKind === "noDonation"
-          ? "Session ended. No extra donation to the market."
-          : "Session closed. You protected yourself today.",
-      tone: "success",
-    },
-    [STEPS.DO_NOT_ENTER_NEXT_SYMBOL]: {
-      type: "next-symbol",
-      eyebrow:
-        nextSymbolMessage === NEXT_SYMBOL_MESSAGES.viewNext
-          ? "Next setup"
-          : "Stop",
-      title: nextSymbolMessage,
-      tone:
-        nextSymbolMessage === NEXT_SYMBOL_MESSAGES.viewNext
-          ? "default"
-          : "danger",
-      buttonVariant:
-        nextSymbolMessage === NEXT_SYMBOL_MESSAGES.viewNext
-          ? "primary"
-          : "danger",
-    },
-  };
+      <div className="home-actions" aria-label="Main sections">
+        <button
+          className={`section-card trading-card ${
+            isTradingLocked ? "section-card-locked" : ""
+          }`}
+          type="button"
+          onClick={onTrading}
+          disabled={isTradingLocked}
+        >
+          <span>Trading Session</span>
+          {isTradingLocked && (
+            <small>
+              Trading Session locked.
+              <br />
+              Available again in: {countdown}
+            </small>
+          )}
+        </button>
 
-  return screens[step] || screens[STEPS.OPEN_TRADINGVIEW];
+        <button className="section-card homework-card" type="button" onClick={onHomework}>
+          <span>After Session Homework Steps</span>
+        </button>
+
+        <button className="section-card alerts-card" type="button" onClick={onAlerts}>
+          <span>TradingView Alerts Steps</span>
+        </button>
+      </div>
+
+      {isTradingLocked && (
+        <LockedTradingSessionScreen countdown={countdown} />
+      )}
+
+      {notice && <p className="home-notice" role="status">{notice}</p>}
+    </section>
+  );
+}
+
+function LockedTradingSessionScreen({ countdown }) {
+  return (
+    <section className="lock-panel" aria-live="polite">
+      <h2>Trading Session locked for 10 minutes.</h2>
+      <p>Go Girl Go make yourself win one more day today by showing discipline.</p>
+      <strong>Available again in: {countdown}</strong>
+    </section>
+  );
+}
+
+function SellAlertButton({ onClick }) {
+  return (
+    <button className="sell-alert-button" type="button" onClick={onClick}>
+      SELL! SELL! SELL! ALERT
+    </button>
+  );
 }
 
 function StepScreen({
-  eyebrow,
   title,
-  detail,
+  buttonLabel,
+  onNext,
+  topSlot = null,
   tone = "default",
-  titleSize = "default",
-  actions,
 }) {
   return (
-    <div className={`step-card card-${tone}`}>
+    <article className={`step-screen tone-${tone}`}>
+      <div className="screen-top">{topSlot}</div>
       <div className="step-copy">
-        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-        <h1 className={`step-title title-${titleSize}`} aria-live="polite">
-          {title.split("\n").map((line, index) =>
-            line ? (
-              <span key={`${line}-${index}`}>
-                {line}
-                <br />
-              </span>
-            ) : (
-              <span className="line-break" key={`break-${index}`} />
-            ),
-          )}
-        </h1>
-        {detail && <p className="step-detail">{detail}</p>}
+        {title && <h1>{title}</h1>}
       </div>
-
-      <div className="action-stack">
-        {actions.map((action) => (
-          <button
-            className={`action-button button-${action.variant || "primary"}`}
-            key={action.label}
-            type="button"
-            onClick={action.onClick}
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
-    </div>
+      <button className="primary-action" type="button" onClick={onNext}>
+        {buttonLabel}
+      </button>
+    </article>
   );
 }
 
-function CalculatorScreen({
-  tradeDirection,
-  values,
-  prices,
-  onChange,
-  onTargetHit,
-  onSlHit,
+function DecisionScreen({
+  title,
+  yesLabel,
+  noLabel,
+  onYes,
+  onNo,
+  topSlot = null,
 }) {
-  const modeLabel = getTradeModeLabel(tradeDirection);
+  return (
+    <article className="step-screen tone-default">
+      <div className="screen-top">{topSlot}</div>
+      <div className="step-copy">
+        <h1>{title}</h1>
+      </div>
+      <div className="split-actions">
+        <button className="primary-action success-action" type="button" onClick={onYes}>
+          {yesLabel}
+        </button>
+        <button className="primary-action danger-action" type="button" onClick={onNo}>
+          {noLabel}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function ChecklistScreen({ items, states, onToggle, onDone, topSlot = null }) {
+  return (
+    <article className="step-screen checklist-screen">
+      <div className="screen-top">{topSlot}</div>
+      <div className="checklist-copy">
+        <h1>NO'S...</h1>
+        <div className="checklist-items">
+          {items.map((item, index) => (
+            <button
+              className={`checklist-item check-state-${states[index]}`}
+              type="button"
+              key={item}
+              onClick={() => onToggle(index)}
+            >
+              <span className="check-icon" aria-hidden="true">
+                {states[index] === CHECK_STATES.GREEN
+                  ? "✓"
+                  : states[index] === CHECK_STATES.RED
+                    ? "×"
+                    : ""}
+              </span>
+              <span>{item}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <button className="primary-action" type="button" onClick={onDone}>
+        Done
+      </button>
+    </article>
+  );
+}
+
+function CalculatorScreen({ direction, values, prices, onChange, onDone }) {
+  const modeLabel =
+    direction === TRADE_DIRECTIONS.SHORT ? "SELL / SHORT" : "BUY / LONG";
 
   return (
-    <div className="calculator-card">
-      <div className="calculator-head">
-        <p className={`calculator-mode mode-${tradeDirection || "long"}`}>
-          Calculator Mode: {modeLabel}
-        </p>
-        <p className="eyebrow">Target calculator</p>
-        <h1 className="calculator-title">Trade levels</h1>
+    <article className={`calculator-screen tone-${direction}`}>
+      <div className="calculator-copy">
+        <p className="calculator-mode">Calculator Mode: {modeLabel}</p>
+        <div className="input-grid">
+          <NumberInput
+            label="Entry Price"
+            value={values.entryPrice}
+            onChange={(value) => onChange("entryPrice", value)}
+          />
+          <NumberInput
+            label="Quantity"
+            value={values.quantity}
+            onChange={(value) => onChange("quantity", value)}
+          />
+          <NumberInput
+            label="Target 1 Profit Amount"
+            value={values.target1Amount}
+            onChange={(value) => onChange("target1Amount", value)}
+          />
+          <NumberInput
+            label="Target 2 Profit Amount"
+            value={values.target2Amount}
+            onChange={(value) => onChange("target2Amount", value)}
+          />
+          <NumberInput
+            label="Max Risk Amount"
+            value={values.maxRiskAmount}
+            onChange={(value) => onChange("maxRiskAmount", value)}
+          />
+        </div>
+
+        <div className="output-grid" aria-live="polite">
+          <OutputCard
+            label="Target 1 Price"
+            value={formatPrice(prices?.target1Price)}
+          />
+          <OutputCard
+            label="Target 2 Price"
+            value={formatPrice(prices?.target2Price)}
+          />
+          <OutputCard
+            label="Stop Loss Price"
+            value={formatPrice(prices?.stopLossPrice)}
+            danger
+          />
+        </div>
       </div>
 
-      <div className="input-grid">
-        <NumberInput
-          label="Entry Price"
-          value={values.entryPrice}
-          onChange={(value) => onChange("entryPrice", value)}
-          placeholder="0.00"
-        />
-        <NumberInput
-          label="Quantity"
-          value={values.quantity}
-          onChange={(value) => onChange("quantity", value)}
-          placeholder="0"
-        />
-        <NumberInput
-          label="Target 1 Profit Amount"
-          value={values.target1Amount}
-          onChange={(value) => onChange("target1Amount", value)}
-          placeholder="50"
-        />
-        <NumberInput
-          label="Target 2 Profit Amount"
-          value={values.target2Amount}
-          onChange={(value) => onChange("target2Amount", value)}
-          placeholder="100"
-        />
-        <NumberInput
-          label="Max Risk Amount"
-          value={values.maxRiskAmount}
-          onChange={(value) => onChange("maxRiskAmount", value)}
-          placeholder="50"
-        />
-      </div>
-
-      <div className="price-grid" aria-live="polite">
-        <PriceCard
-          label="Target 1 Price"
-          value={formatPrice(prices?.target1Price)}
-        />
-        <PriceCard
-          label="Target 2 Price"
-          value={formatPrice(prices?.target2Price)}
-        />
-        <PriceCard
-          label="Stop Loss Price"
-          value={formatPrice(prices?.stopLossPrice)}
-          danger
-        />
-      </div>
-
-      <div className="calculator-actions">
-        <button
-          className="action-button button-success"
-          type="button"
-          onClick={onTargetHit}
-        >
-          Target Hit
-        </button>
-        <button
-          className="action-button button-danger"
-          type="button"
-          onClick={onSlHit}
-        >
-          SL Hit
-        </button>
-      </div>
-    </div>
+      <button className="primary-action" type="button" onClick={onDone}>
+        Done
+      </button>
+    </article>
   );
 }
 
-function NumberInput({ label, value, onChange, placeholder }) {
+function NumberInput({ label, value, onChange }) {
   return (
     <label className="number-field">
       <span>{label}</span>
@@ -773,19 +827,88 @@ function NumberInput({ label, value, onChange, placeholder }) {
         inputMode="decimal"
         min="0"
         value={value}
-        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
   );
 }
 
-function PriceCard({ label, value, danger = false }) {
+function OutputCard({ label, value, danger = false }) {
   return (
-    <div className={`price-card ${danger ? "price-danger" : "price-target"}`}>
+    <div className={`output-card ${danger ? "output-danger" : ""}`}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function AllocationCheckScreen({ checks, warning, onToggle, onComplete }) {
+  return (
+    <article className="step-screen allocation-screen">
+      <div className="allocation-copy">
+        <ChecklistCheckbox
+          label="SL allotted?"
+          checked={checks.sl}
+          onChange={() => onToggle("sl")}
+        />
+        <ChecklistCheckbox
+          label="Target allotted?"
+          checked={checks.target}
+          onChange={() => onToggle("target")}
+        />
+        {warning && <p className="allocation-warning">{warning}</p>}
+      </div>
+      <button className="primary-action success-action" type="button" onClick={onComplete}>
+        Yes! All Set.
+      </button>
+    </article>
+  );
+}
+
+function ChecklistCheckbox({ label, checked, onChange }) {
+  return (
+    <label className={`allocation-row ${checked ? "allocation-row-checked" : ""}`}>
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function LinearFlow({ steps, index, setIndex, onHome, finalButtonLabel }) {
+  const isFinal = index === steps.length - 1;
+
+  function goBack() {
+    if (index === 0) {
+      onHome();
+      return;
+    }
+
+    setIndex(index - 1);
+  }
+
+  return (
+    <section className="linear-shell" key={`${steps.length}-${index}`}>
+      <header className="flow-nav">
+        <button className="nav-button" type="button" onClick={goBack}>
+          Back
+        </button>
+        <button className="nav-button" type="button" onClick={onHome}>
+          Home
+        </button>
+      </header>
+      <article className="step-screen linear-screen">
+        <div className="step-copy">
+          <h1>{steps[index]}</h1>
+        </div>
+        <button
+          className="primary-action"
+          type="button"
+          onClick={isFinal ? onHome : () => setIndex(index + 1)}
+        >
+          {isFinal ? finalButtonLabel : "Next"}
+        </button>
+      </article>
+    </section>
   );
 }
 
